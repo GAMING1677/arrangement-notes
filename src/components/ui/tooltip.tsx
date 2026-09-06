@@ -1,0 +1,8 @@
+import * as React from 'react'
+import { cn } from '@/lib/utils'
+
+const Context = React.createContext<{ open: boolean; setOpen: (open: boolean) => void }>({ open: false, setOpen: () => undefined })
+export function TooltipProvider({ children }: { children: React.ReactNode; delayDuration?: number }) { return <>{children}</> }
+export function Tooltip({ children }: { children: React.ReactNode }) { const [open, setOpen] = React.useState(false); return <Context.Provider value={{ open, setOpen }}><div className="relative inline-flex" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>{children}</div></Context.Provider> }
+export function TooltipTrigger({ children, asChild = false }: { children: React.ReactNode; asChild?: boolean }) { const context = React.useContext(Context); if (asChild && React.isValidElement<{ onFocus?: React.FocusEventHandler; onBlur?: React.FocusEventHandler }>(children)) return React.cloneElement(children, { onFocus: (event) => { children.props.onFocus?.(event); context.setOpen(true) }, onBlur: (event) => { children.props.onBlur?.(event); context.setOpen(false) } }); return <span tabIndex={0} onFocus={() => context.setOpen(true)} onBlur={() => context.setOpen(false)}>{children}</span> }
+export function TooltipContent({ className, children, ...props }: React.ComponentProps<'div'>) { const { open } = React.useContext(Context); if (!open) return null; return <div role="tooltip" className={cn('absolute bottom-full left-1/2 z-50 mb-2 max-w-[360px] -translate-x-1/2 whitespace-pre-wrap rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg', className)} {...props}>{children}</div> }
