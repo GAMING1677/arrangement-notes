@@ -11,7 +11,9 @@ export type ProjectMutation =
   | { type: 'lane/remove'; laneId: string }
   | { type: 'block/add'; laneId: string; block: IdeaBlock }
   | { type: 'block/update'; laneId: string; block: IdeaBlock }
+  | { type: 'block/update-many'; blocks: Array<{ laneId: string; block: IdeaBlock }> }
   | { type: 'block/remove'; laneId: string; blockId: string }
+  | { type: 'block/remove-many'; blocks: Array<{ laneId: string; blockId: string }> }
 
 export interface ProjectServices {
   create: () => ArrangementProject

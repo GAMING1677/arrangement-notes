@@ -113,12 +113,32 @@ export const applyProjectMutation = (
       lane.blocks[blockIndex] = cloneBlock(mutation.block)
       break
     }
+    case 'block/update-many': {
+      for (const update of mutation.blocks) {
+        const lane = next.lanes.find((candidate) => candidate.id === update.laneId)
+        if (!lane) return fail(`レーンが見つかりません: ${update.laneId}`)
+        const blockIndex = lane.blocks.findIndex((candidate) => candidate.id === update.block.id)
+        if (blockIndex < 0) return fail(`ブロックが見つかりません: ${update.block.id}`)
+        lane.blocks[blockIndex] = cloneBlock(update.block)
+      }
+      break
+    }
     case 'block/remove': {
       const lane = next.lanes.find((candidate) => candidate.id === mutation.laneId)
       if (!lane) return fail(`レーンが見つかりません: ${mutation.laneId}`)
       const blockIndex = lane.blocks.findIndex((candidate) => candidate.id === mutation.blockId)
       if (blockIndex < 0) return fail(`ブロックが見つかりません: ${mutation.blockId}`)
       lane.blocks.splice(blockIndex, 1)
+      break
+    }
+    case 'block/remove-many': {
+      for (const removal of mutation.blocks) {
+        const lane = next.lanes.find((candidate) => candidate.id === removal.laneId)
+        if (!lane) return fail(`レーンが見つかりません: ${removal.laneId}`)
+        const blockIndex = lane.blocks.findIndex((candidate) => candidate.id === removal.blockId)
+        if (blockIndex < 0) return fail(`ブロックが見つかりません: ${removal.blockId}`)
+        lane.blocks.splice(blockIndex, 1)
+      }
       break
     }
   }
@@ -131,6 +151,12 @@ export const applyProjectMutation = (
   if (mutation.type === 'block/add' || mutation.type === 'block/update') {
     const blockResult = validateBlock(mutation.block)
     if (!blockResult.ok) return fail(`追加・更新するブロックが不正です: ${blockResult.error}`)
+  }
+  if (mutation.type === 'block/update-many') {
+    for (const update of mutation.blocks) {
+      const blockResult = validateBlock(update.block)
+      if (!blockResult.ok) return fail(`追加・更新するブロックが不正です: ${blockResult.error}`)
+    }
   }
   const validated = validateProject(candidate)
   return validated.ok ? validated : fail(validated.error)

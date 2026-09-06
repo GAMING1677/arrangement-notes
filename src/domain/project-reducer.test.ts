@@ -164,4 +164,33 @@ describe('project reducer', () => {
     if (!recolored.ok) return
     expect(recolored.value.lanes[0].blocks[0].color).toBe('rose')
   })
+
+  it('updates and removes multiple blocks in one mutation', () => {
+    const original = projectWithLane()
+    const firstId = '4d8f8f2d-1a7f-4d5b-ae0a-1f3d4c5b6a70'
+    const secondId = '5e9a9e3e-2b8f-4e6c-bf1b-2a4e5d6c7b81'
+    const first = applyProjectMutation(original, { type: 'block/add', laneId, block: block(firstId, 0, 2) }, LATER)
+    if (!first.ok) throw new Error(first.error)
+    const second = applyProjectMutation(first.value, { type: 'block/add', laneId, block: block(secondId, 4, 2) }, '2026-09-06T00:02:00.000Z')
+    if (!second.ok) throw new Error(second.error)
+
+    const moved = applyProjectMutation(second.value, {
+      type: 'block/update-many',
+      blocks: [
+        { laneId, block: block(firstId, 2, 2) },
+        { laneId, block: block(secondId, 6, 2) },
+      ],
+    }, '2026-09-06T00:03:00.000Z')
+    expect(moved.ok).toBe(true)
+    if (!moved.ok) return
+    expect(moved.value.lanes[0].blocks.map((candidate) => candidate.startBar)).toEqual([2, 6])
+
+    const removed = applyProjectMutation(moved.value, {
+      type: 'block/remove-many',
+      blocks: [{ laneId, blockId: firstId }, { laneId, blockId: secondId }],
+    }, '2026-09-06T00:04:00.000Z')
+    expect(removed.ok).toBe(true)
+    if (!removed.ok) return
+    expect(removed.value.lanes[0].blocks).toEqual([])
+  })
 })
