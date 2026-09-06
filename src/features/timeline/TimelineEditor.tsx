@@ -23,6 +23,7 @@ const COLOR_CLASSES: Record<LaneColor, string> = {
   blue: 'border-blue-300/60 bg-blue-400/20 text-blue-100',
 }
 const COLOR_LABELS: Record<LaneColor, string> = { cyan: 'シアン', violet: 'バイオレット', amber: 'アンバー', emerald: 'エメラルド', rose: 'ローズ', blue: 'ブルー' }
+const SKIP_BLOCK_DELETE_CONFIRMATION_KEY = 'arrangement-notes:skip-block-delete-confirmation'
 
 type FormState = { laneId: string; blockId?: string; label: string; memo: string; startBar: string; durationBars: string; color: LaneColor }
 type BlockRef = { laneId: string; block: IdeaBlock }
@@ -40,6 +41,25 @@ function initialForm(laneId: string, block?: IdeaBlock, fallbackColor: LaneColor
   return { laneId, blockId: block?.id || undefined, label: block?.label ?? 'アイデア', memo: block?.memo ?? '', startBar: String((block?.startBar ?? 0) + 1), durationBars: String(block?.durationBars ?? 4), color: block?.color ?? fallbackColor }
 }
 
+function readSkipBlockDeleteConfirmation() {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.localStorage.getItem(SKIP_BLOCK_DELETE_CONFIRMATION_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function writeSkipBlockDeleteConfirmation(skip: boolean) {
+  if (typeof window === 'undefined') return
+  try {
+    if (skip) window.localStorage.setItem(SKIP_BLOCK_DELETE_CONFIRMATION_KEY, 'true')
+    else window.localStorage.removeItem(SKIP_BLOCK_DELETE_CONFIRMATION_KEY)
+  } catch {
+    // localStorageが利用できない環境でも削除操作は継続する
+  }
+}
+
 export function TimelineEditor({ project, onMutation, disabled = false }: TimelineEditorProps) {
   const [barWidth, setBarWidth] = useState<number>(48)
   const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([])
@@ -50,6 +70,7 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
   const [renameDraft, setRenameDraft] = useState('')
   const [form, setForm] = useState<FormState | null>(null)
   const [blocksToDelete, setBlocksToDelete] = useState<BlockRef[]>([])
+  const [skipBlockDeleteConfirmation, setSkipBlockDeleteConfirmation] = useState(readSkipBlockDeleteConfirmation)
   const [laneToDelete, setLaneToDelete] = useState<IdeaLane | null>(null)
   const [interaction, setInteraction] = useState<Interaction | null>(null)
   const [preview, setPreview] = useState<{ blocks: BlockRef[]; valid: boolean } | null>(null)
@@ -147,19 +168,28 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
     if (commit(mutation, form.blockId ? 'ブロックを更新しました' : 'ブロックを追加しました')) { setSelectedBlockIds([block.id]); setSelectionAnchorId(block.id); setForm(null) }
   }
 
-  const requestDelete = (blocks: BlockRef[]) => {
-    if (disabled || blocks.length === 0) return
-    setBlocksToDelete(blocks)
-  }
-
-  const removeBlocks = () => {
-    if (blocksToDelete.length === 0) return
-    const blocks = blocksToDelete.map(({ laneId, block }) => ({ laneId, blockId: block.id }))
+  const removeBlocks = (blocksToRemove = blocksToDelete) => {
+    if (blocksToRemove.length === 0) return
+    const blocks = blocksToRemove.map(({ laneId, block }) => ({ laneId, blockId: block.id }))
     if (commit({ type: 'block/remove-many', blocks }, 'ブロックを削除しました')) {
       setSelectedBlockIds((current) => current.filter((id) => !blocks.some((item) => item.blockId === id)))
       setSelectionAnchorId(null)
       setBlocksToDelete([])
     }
+  }
+
+  const requestDelete = (blocks: BlockRef[]) => {
+    if (disabled || blocks.length === 0) return
+    if (skipBlockDeleteConfirmation) {
+      removeBlocks(blocks)
+      return
+    }
+    setBlocksToDelete(blocks)
+  }
+
+  const changeSkipBlockDeleteConfirmation = (skip: boolean) => {
+    setSkipBlockDeleteConfirmation(skip)
+    writeSkipBlockDeleteConfirmation(skip)
   }
 
   const applyPreview = () => {
@@ -377,7 +407,7 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
       <fieldset className="grid gap-2"><legend className="text-sm font-medium">色</legend><div className="flex flex-wrap gap-2" role="radiogroup" aria-label="ブロックの色">{LANE_COLORS.map((color) => <button key={color} type="button" className={cn('flex h-9 min-w-20 items-center justify-center rounded-md border px-2 text-xs font-semibold transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring', COLOR_CLASSES[color], form.color === color && 'ring-2 ring-primary ring-offset-2 ring-offset-background')} aria-label={`ブロックの色を${COLOR_LABELS[color]}にする`} aria-pressed={form.color === color} onClick={() => setForm({ ...form, color })}>{form.color === color ? '✓ ' : ''}{COLOR_LABELS[color]}</button>)}</div></fieldset>
       <div className="grid grid-cols-2 gap-3"><div className="grid gap-2"><Label htmlFor="block-start">開始小節</Label><Input id="block-start" inputMode="numeric" value={form.startBar} onChange={(event) => setForm({ ...form, startBar: event.target.value })} /></div><div className="grid gap-2"><Label htmlFor="block-duration">長さ（小節）</Label><Input id="block-duration" inputMode="numeric" value={form.durationBars} onChange={(event) => setForm({ ...form, durationBars: event.target.value })} /></div></div>
     </div>}<DialogFooter><Button variant="outline" onClick={() => setForm(null)}>キャンセル</Button><Button onClick={saveForm}>保存</Button></DialogFooter></DialogContent></Dialog>
-    <AlertDialog open={blocksToDelete.length > 0} onOpenChange={(open) => { if (!open) setBlocksToDelete([]) }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>ブロックを削除しますか？</AlertDialogTitle><AlertDialogDescription>{blocksToDelete.length === 1 ? `「${blocksToDelete[0].block.label}」を削除すると元に戻せません。` : `${blocksToDelete.length}個のブロックを削除すると元に戻せません。`}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>キャンセル</AlertDialogCancel><AlertDialogAction onClick={removeBlocks}>削除</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <AlertDialog open={blocksToDelete.length > 0} onOpenChange={(open) => { if (!open) setBlocksToDelete([]) }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>ブロックを削除しますか？</AlertDialogTitle><AlertDialogDescription>{blocksToDelete.length === 1 ? `「${blocksToDelete[0].block.label}」を削除すると元に戻せません。` : `${blocksToDelete.length}個のブロックを削除すると元に戻せません。`}</AlertDialogDescription></AlertDialogHeader><label className="mt-4 flex cursor-pointer items-center gap-2 text-sm"><input type="checkbox" checked={skipBlockDeleteConfirmation} onChange={(event) => changeSkipBlockDeleteConfirmation(event.target.checked)} />今後この確認を表示しない</label><AlertDialogFooter><AlertDialogCancel>キャンセル</AlertDialogCancel><AlertDialogAction onClick={removeBlocks}>削除</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     <AlertDialog open={laneToDelete !== null} onOpenChange={(open) => { if (!open) setLaneToDelete(null) }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>レーンを削除しますか？</AlertDialogTitle><AlertDialogDescription>「{laneToDelete?.name}」と、その中の{laneToDelete?.blocks.length ?? 0}個のブロックを削除します。</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>キャンセル</AlertDialogCancel><AlertDialogAction onClick={() => { if (laneToDelete && commit({ type: 'lane/remove', laneId: laneToDelete.id }, 'レーンを削除しました')) setLaneToDelete(null) }}>削除</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </TooltipProvider>
 }
@@ -408,12 +438,14 @@ function CreationPreview({ block, barWidth, invalid }: { block: IdeaBlock; barWi
 
 function BlockView({ block, color, barWidth, selected, invalid, disabled, onSelect, onDoubleClick, onKeyDown, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { block: IdeaBlock; color: LaneColor; barWidth: number; selected: boolean; invalid: boolean; disabled: boolean; onSelect: (event: ReactMouseEvent<HTMLButtonElement>) => void; onDoubleClick: () => void; onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => void; onPointerDown: (event: ReactPointerEvent<HTMLElement>, mode: Interaction['mode']) => void; onPointerMove: (event: ReactPointerEvent<HTMLElement>) => void; onPointerUp: () => void; onPointerCancel: () => void }) {
   const memo = block.memo.trim()
-  const memoText = memo.length > 500 ? `${memo.slice(0, 500)}\n（長文メモは編集画面で全文を表示）` : memo
-  return <div className={cn('absolute inset-y-2 overflow-visible', selected && 'z-10')} style={{ left: block.startBar * barWidth, width: block.durationBars * barWidth }}>
-    <button type="button" className={cn('group relative flex h-full w-full items-center overflow-hidden rounded-md border px-3 text-left text-sm font-semibold shadow-sm transition focus-visible:ring-2 focus-visible:ring-ring', COLOR_CLASSES[color], selected && 'ring-2 ring-primary', invalid && 'border-2 border-destructive bg-destructive/30', disabled && 'cursor-not-allowed opacity-60')} style={{ touchAction: 'none' }} onClick={onSelect} onDoubleClick={(event) => { event.stopPropagation(); onDoubleClick() }} onKeyDown={onKeyDown} onPointerDown={(event) => onPointerDown(event, 'move')} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} onLostPointerCapture={onPointerCancel} aria-label={`${block.label}、開始小節${block.startBar + 1}、${block.durationBars}小節`}>
-      <div className="min-w-0 flex-1 truncate">{block.label}</div>{memo && <Tooltip><TooltipTrigger asChild><span className="ml-2 shrink-0" aria-label="メモあり"><StickyNote className="size-4" /></span></TooltipTrigger><TooltipContent>{memoText}</TooltipContent></Tooltip>}
+  return <Tooltip className={cn('absolute inset-y-2 overflow-visible', selected && 'z-10')} style={{ left: block.startBar * barWidth, width: block.durationBars * barWidth }}>
+    <TooltipTrigger asChild>
+      <button type="button" className={cn('group relative flex h-full w-full items-center overflow-hidden rounded-md border px-3 text-left text-sm font-semibold shadow-sm transition focus-visible:ring-2 focus-visible:ring-ring', COLOR_CLASSES[color], selected && 'ring-2 ring-primary', invalid && 'border-2 border-destructive bg-destructive/30', disabled && 'cursor-not-allowed opacity-60')} style={{ touchAction: 'none' }} onClick={onSelect} onDoubleClick={(event) => { event.stopPropagation(); onDoubleClick() }} onKeyDown={onKeyDown} onPointerDown={(event) => onPointerDown(event, 'move')} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} onLostPointerCapture={onPointerCancel} aria-label={`${block.label}、開始小節${block.startBar + 1}、${block.durationBars}小節${memo ? '、メモあり' : ''}`}>
+        <div className="min-w-0 flex-1 truncate">{block.label}</div>{memo && <span className="ml-2 shrink-0" aria-label="メモあり"><StickyNote className="size-4" /></span>}
       <span className="absolute inset-y-0 left-0 w-2 cursor-ew-resize" role="presentation" onPointerDown={(event) => onPointerDown(event, 'resize-left')} />
       <span className="absolute inset-y-0 right-0 w-2 cursor-ew-resize" role="presentation" onPointerDown={(event) => onPointerDown(event, 'resize-right')} />
-    </button>
-  </div>
+      </button>
+    </TooltipTrigger>
+    {memo && <TooltipContent>{memo}</TooltipContent>}
+  </Tooltip>
 }
