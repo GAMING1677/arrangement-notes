@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import type { ArrangementProject } from '@/domain/project'
 import type { ProjectControlsProps, Result } from '@/domain/editor-contracts'
@@ -47,17 +47,16 @@ export function ProjectControls({
   onBusyChange,
 }: ProjectControlsProps) {
   const [draft, setDraft] = useState<ProjectSettingsDraft>(() => makeProjectSettingsDraft(project))
-  const [formBusy, setFormBusy] = useState(false)
   const [fileBusy, setFileBusy] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [replacement, setReplacement] = useState<ReplacementRequest | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dialogCancelRef = useRef<HTMLButtonElement>(null)
-  const busy = formBusy || fileBusy || replacement !== null
+  const busy = fileBusy || replacement !== null
 
   useEffect(() => {
-    if (!formBusy) setDraft(makeProjectSettingsDraft(project))
-  }, [formBusy, project])
+    setDraft(makeProjectSettingsDraft(project))
+  }, [project])
 
   useEffect(() => {
     onBusyChange(busy)
@@ -84,24 +83,9 @@ export function ProjectControls({
   }, [replacement])
 
   function changeDraft(field: keyof ProjectSettingsDraft, value: string) {
-    setFormBusy(true)
-    setDraft((current) => ({ ...current, [field]: value }))
-    setNotice(null)
-  }
-
-  function startForm() {
-    setFormBusy(true)
-    setNotice(null)
-  }
-
-  function cancelForm() {
-    setDraft(makeProjectSettingsDraft(project))
-    setFormBusy(false)
-    setNotice(null)
-  }
-
-  function submitForm() {
-    const mutation = makeProjectSettingsMutation(draft)
+    const nextDraft = { ...draft, [field]: value }
+    setDraft(nextDraft)
+    const mutation = makeProjectSettingsMutation(nextDraft)
     if (isResultError(mutation)) {
       setNotice({ kind: 'error', message: mutation.error })
       return
@@ -112,15 +96,10 @@ export function ProjectControls({
       return
     }
     setDraft(makeProjectSettingsDraft(result.value))
-    setFormBusy(false)
-    setNotice({ kind: 'info', message: 'プロジェクト設定を更新しました。' })
+    setNotice(null)
   }
 
   function saveProject() {
-    if (formBusy) {
-      setNotice({ kind: 'error', message: '設定の編集中です。フォームの適用または取消を先に行ってください。' })
-      return
-    }
     const serialized = services.serialize(project)
     if (isResultError(serialized)) {
       setNotice({ kind: 'error', message: serialized.error })
@@ -138,7 +117,6 @@ export function ProjectControls({
   function finishReplacement(candidate: ArrangementProject, message: string) {
     onReplace(candidate)
     setReplacement(null)
-    setFormBusy(false)
     setDraft(makeProjectSettingsDraft(candidate))
     setNotice({ kind: 'info', message })
   }
@@ -220,7 +198,6 @@ export function ProjectControls({
             id="project-name"
             className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
             value={draft.name}
-            onFocus={startForm}
             onChange={(event) => changeDraft('name', event.target.value)}
             aria-describedby="project-name-help"
             disabled={fileBusy || replacement !== null}
@@ -229,31 +206,30 @@ export function ProjectControls({
         </div>
         <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground" htmlFor="project-bpm">
           BPM
-          <input id="project-bpm" type="text" inputMode="decimal" className="h-9 w-24 rounded-md border bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring" value={draft.bpm} onFocus={startForm} onChange={(event) => changeDraft('bpm', event.target.value)} disabled={fileBusy || replacement !== null} />
+          <AdjustableNumberInput id="project-bpm" value={draft.bpm} min={20} max={400} step={1} precision={1} inputMode="decimal" onChange={(value) => changeDraft('bpm', value)} disabled={busy} aria-label="BPM。ホイールまたは上下ドラッグで調整" />
         </label>
         <fieldset className="flex gap-2">
           <legend className="mb-1 text-xs font-medium text-muted-foreground">拍子</legend>
           <label className="sr-only" htmlFor="project-beats-per-bar">拍子の分子</label>
-          <input id="project-beats-per-bar" type="text" inputMode="numeric" className="h-9 w-16 rounded-md border bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring" value={draft.beatsPerBar} onFocus={startForm} onChange={(event) => changeDraft('beatsPerBar', event.target.value)} disabled={fileBusy || replacement !== null} />
+          <input id="project-beats-per-bar" type="text" inputMode="numeric" className="h-9 w-16 rounded-md border bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring" value={draft.beatsPerBar} onChange={(event) => changeDraft('beatsPerBar', event.target.value)} disabled={busy} />
           <span className="self-center text-muted-foreground">/</span>
           <label className="sr-only" htmlFor="project-beat-unit">拍子の分母</label>
-          <select id="project-beat-unit" className="h-9 rounded-md border bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring" value={draft.beatUnit} onFocus={startForm} onChange={(event) => changeDraft('beatUnit', event.target.value)} disabled={fileBusy || replacement !== null}>
+          <select id="project-beat-unit" className="h-9 rounded-md border bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring" value={draft.beatUnit} onChange={(event) => changeDraft('beatUnit', event.target.value)} disabled={busy}>
             {[2, 4, 8, 16].map((unit) => <option key={unit} value={unit}>{unit}</option>)}
           </select>
         </fieldset>
         <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground" htmlFor="project-total-bars">
           総小節数
-          <input id="project-total-bars" type="text" inputMode="numeric" className="h-9 w-24 rounded-md border bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring" value={draft.totalBars} onFocus={startForm} onChange={(event) => changeDraft('totalBars', event.target.value)} disabled={fileBusy || replacement !== null} />
+          <AdjustableNumberInput id="project-total-bars" value={draft.totalBars} min={1} max={1024} step={1} precision={0} inputMode="numeric" onChange={(value) => changeDraft('totalBars', value)} disabled={busy} aria-label="総小節数。ホイールまたは上下ドラッグで調整" />
         </label>
         <div className="flex flex-wrap items-end gap-2 pt-5">
-          <Button type="button" variant="outline" size="sm" onClick={submitForm} disabled={!formBusy || fileBusy || replacement !== null}>適用</Button>
-          <Button type="button" variant="ghost" size="sm" onClick={cancelForm} disabled={!formBusy || fileBusy || replacement !== null}>取消</Button>
           <Button type="button" variant="outline" size="sm" onClick={createNewProject} disabled={busy}>新規</Button>
           <Button type="button" variant="outline" size="sm" onClick={openFilePicker} disabled={busy}>開く</Button>
           <Button type="button" size="sm" onClick={saveProject} disabled={busy}>保存</Button>
           <input ref={fileInputRef} className="sr-only" type="file" accept=".json,application/json" onChange={handleFileChange} aria-label="JSONファイルを選択" />
         </div>
       </div>
+      <p className="mt-2 text-xs text-muted-foreground">BPM・総小節数はホイールまたは上下ドラッグで調整できます。設定は有効な値になった時点で反映されます。</p>
       <div className="mt-2 flex min-h-5 items-center gap-3 text-sm" aria-live="polite">
         {dirty && <span className="font-medium text-amber-300">未保存</span>}
         {notice && <span className={notice.kind === 'error' ? 'text-rose-300' : 'text-muted-foreground'} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.message}</span>}
@@ -273,4 +249,72 @@ export function ProjectControls({
       )}
     </section>
   )
+}
+
+type AdjustableNumberInputProps = {
+  id: string
+  value: string
+  min: number
+  max: number
+  step: number
+  precision: number
+  inputMode: 'decimal' | 'numeric'
+  onChange: (value: string) => void
+  disabled: boolean
+  'aria-label': string
+}
+
+function AdjustableNumberInput({ id, value, min, max, step, precision, inputMode, onChange, disabled, 'aria-label': ariaLabel }: AdjustableNumberInputProps) {
+  const [dragStart, setDragStart] = useState<{ pointerId: number; clientY: number; value: number } | null>(null)
+
+  function adjust(nextValue: number) {
+    if (!Number.isFinite(nextValue)) return
+    const clamped = Math.min(max, Math.max(min, nextValue))
+    if (clamped === Number(value)) return
+    onChange(clamped.toFixed(precision))
+  }
+
+  function handleWheel(event: ReactWheelEvent<HTMLInputElement>) {
+    if (disabled || !Number.isFinite(Number(value)) || event.deltaY === 0) return
+    event.preventDefault()
+    adjust(Number(value) + (event.deltaY < 0 ? step : -step))
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLInputElement>) {
+    if (disabled || event.button !== 0 || !Number.isFinite(Number(value))) return
+    event.currentTarget.focus()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setDragStart({ pointerId: event.pointerId, clientY: event.clientY, value: Number(value) })
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLInputElement>) {
+    if (!dragStart || dragStart.pointerId !== event.pointerId) return
+    event.preventDefault()
+    const delta = Math.round((dragStart.clientY - event.clientY) / 4)
+    adjust(dragStart.value + delta * step)
+  }
+
+  function stopDragging(event: ReactPointerEvent<HTMLInputElement>) {
+    if (!dragStart || dragStart.pointerId !== event.pointerId) return
+    setDragStart(null)
+  }
+
+  return <input
+    id={id}
+    type="text"
+    inputMode={inputMode}
+    className="h-9 w-24 rounded-md border bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    value={value}
+    onChange={(event) => onChange(event.target.value)}
+    onWheel={handleWheel}
+    onPointerDown={handlePointerDown}
+    onPointerMove={handlePointerMove}
+    onPointerUp={stopDragging}
+    onPointerCancel={stopDragging}
+    onLostPointerCapture={() => setDragStart(null)}
+    disabled={disabled}
+    aria-label={ariaLabel}
+    title="ホイールまたは上下ドラッグで調整"
+    style={{ touchAction: 'none' }}
+  />
 }
