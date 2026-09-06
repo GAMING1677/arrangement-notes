@@ -1,7 +1,15 @@
 import type { IdeaBlock } from '@/domain/project'
 
+export const MIN_BAR_WIDTH = 24
+export const MAX_BAR_WIDTH = 96
+export const BAR_WIDTH_STEP = 8
+
 export function barsPerMinute(bpm: number, beatsPerBar: number, beatUnit: number): number {
   return bpm / (beatsPerBar * (4 / beatUnit))
+}
+
+export function adjustBarWidth(barWidth: number, direction: -1 | 1): number {
+  return Math.min(MAX_BAR_WIDTH, Math.max(MIN_BAR_WIDTH, barWidth + direction * BAR_WIDTH_STEP))
 }
 
 export type TimelineInteraction = 'move' | 'resize-left' | 'resize-right'

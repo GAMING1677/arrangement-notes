@@ -16,9 +16,9 @@
       "name": "構成",
       "color": "cyan",
       "blocks": [
-        { "id": "9b4e8dce-5769-4b60-b061-6296f5333c2f", "label": "Intro", "memo": "パッドから開始。\n後半でハイハットを足す。", "startBar": 0, "durationBars": 8 },
-        { "id": "1bba9de1-8723-422e-aaef-b121c7854a51", "label": "Aメロ", "memo": "", "startBar": 8, "durationBars": 16 },
-        { "id": "df26721a-4b83-4d97-a05d-dfce2d1a5f96", "label": "サビ", "memo": "メロディを1オクターブ上げる", "startBar": 24, "durationBars": 16 }
+        { "id": "9b4e8dce-5769-4b60-b061-6296f5333c2f", "label": "Intro", "memo": "パッドから開始。\n後半でハイハットを足す。", "startBar": 0, "durationBars": 8, "color": "cyan" },
+        { "id": "1bba9de1-8723-422e-aaef-b121c7854a51", "label": "Aメロ", "memo": "", "startBar": 8, "durationBars": 16, "color": "violet" },
+        { "id": "df26721a-4b83-4d97-a05d-dfce2d1a5f96", "label": "サビ", "memo": "メロディを1オクターブ上げる", "startBar": 24, "durationBars": 16, "color": "rose" }
       ]
     },
     {
@@ -26,8 +26,8 @@
       "name": "ドラム",
       "color": "violet",
       "blocks": [
-        { "id": "7637fa0c-f0f2-4d11-94fb-e68ef397d74b", "label": "Kick + Hat", "memo": "キックは4つ打ち", "startBar": 8, "durationBars": 15 },
-        { "id": "f6fa9c77-7e51-4249-87c1-2fb4f1eccb72", "label": "Fill", "memo": "最後の1拍は無音", "startBar": 23, "durationBars": 1 }
+        { "id": "7637fa0c-f0f2-4d11-94fb-e68ef397d74b", "label": "Kick + Hat", "memo": "キックは4つ打ち", "startBar": 8, "durationBars": 15, "color": "violet" },
+        { "id": "f6fa9c77-7e51-4249-87c1-2fb4f1eccb72", "label": "Fill", "memo": "最後の1拍は無音", "startBar": 23, "durationBars": 1, "color": "amber" }
       ]
     }
   ]

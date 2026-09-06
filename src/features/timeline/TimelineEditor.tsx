@@ -11,9 +11,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import type { IdeaBlock, IdeaLane, LaneColor } from '@/domain/project'
 import type { ProjectMutation, TimelineEditorProps } from '@/domain/editor-contracts'
 import { cn } from '@/lib/utils'
-import { barFromClientX, barsPerMinute, canPlace, moveBlock, resizeBlock, snapDelta } from './timeline'
+import { adjustBarWidth, barFromClientX, barsPerMinute, canPlace, moveBlock, resizeBlock, snapDelta, MAX_BAR_WIDTH, MIN_BAR_WIDTH } from './timeline'
 
-const BAR_WIDTHS = [24, 32, 48, 64, 96] as const
 const LANE_COLORS: LaneColor[] = ['cyan', 'violet', 'amber', 'emerald', 'rose', 'blue']
 const COLOR_CLASSES: Record<LaneColor, string> = {
   cyan: 'border-cyan-300/60 bg-cyan-400/20 text-cyan-100',
@@ -25,7 +24,7 @@ const COLOR_CLASSES: Record<LaneColor, string> = {
 }
 const COLOR_LABELS: Record<LaneColor, string> = { cyan: 'シアン', violet: 'バイオレット', amber: 'アンバー', emerald: 'エメラルド', rose: 'ローズ', blue: 'ブルー' }
 
-type FormState = { laneId: string; blockId?: string; label: string; memo: string; startBar: string; durationBars: string }
+type FormState = { laneId: string; blockId?: string; label: string; memo: string; startBar: string; durationBars: string; color: LaneColor }
 type Interaction = { laneId: string; blockId: string; mode: 'move' | 'resize-left' | 'resize-right'; pointerId: number; initialClientX: number; initial: IdeaBlock; moved: boolean }
 type MinuteInteraction = { index: number; pointerId: number; initialClientX: number; initialStartBar: number; moved: boolean }
 
@@ -34,8 +33,8 @@ function newId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-function initialForm(laneId: string, block?: IdeaBlock): FormState {
-  return { laneId, blockId: block?.id || undefined, label: block?.label ?? 'アイデア', memo: block?.memo ?? '', startBar: String((block?.startBar ?? 0) + 1), durationBars: String(block?.durationBars ?? 4) }
+function initialForm(laneId: string, block?: IdeaBlock, fallbackColor: LaneColor = 'cyan'): FormState {
+  return { laneId, blockId: block?.id || undefined, label: block?.label ?? 'アイデア', memo: block?.memo ?? '', startBar: String((block?.startBar ?? 0) + 1), durationBars: String(block?.durationBars ?? 4), color: block?.color ?? fallbackColor }
 }
 
 export function TimelineEditor({ project, onMutation, disabled = false }: TimelineEditorProps) {
@@ -84,7 +83,7 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
     const next = lane.blocks.filter((block) => block.startBar >= startBar).sort((a, b) => a.startBar - b.startBar)[0]
     const available = Math.min(duration, project.timeline.totalBars - startBar, next ? next.startBar - startBar : duration)
     if (available < 1) { setError('その位置には空きがありません'); return }
-    setForm(initialForm(laneId, { id: '', label: 'アイデア', memo: '', startBar, durationBars: available }))
+    setForm(initialForm(laneId, { id: '', label: 'アイデア', memo: '', startBar, durationBars: available, color: lane.color }, lane.color))
   }
 
   const addBlockAt = (laneId: string, startBar: number, duration = 4) => {
@@ -94,11 +93,11 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
     const available = Math.min(duration, project.timeline.totalBars - startBar, next ? next.startBar - startBar : duration)
     if (available < 1) { setError('その位置には空きがありません'); return }
 
-    const block: IdeaBlock = { id: newId('block'), label: 'アイデア', memo: '', startBar, durationBars: available }
+    const block: IdeaBlock = { id: newId('block'), label: 'アイデア', memo: '', startBar, durationBars: available, color: lane.color }
     if (commit({ type: 'block/add', laneId, block }, 'ブロックを追加しました')) setSelectedBlockId(block.id)
   }
 
-  const openEdit = (laneId: string, block: IdeaBlock) => { setSelectedBlockId(block.id); setForm(initialForm(laneId, block)) }
+  const openEdit = (laneId: string, block: IdeaBlock) => { setSelectedBlockId(block.id); setForm(initialForm(laneId, block, project.lanes.find((lane) => lane.id === laneId)?.color ?? 'cyan')) }
 
   const saveForm = () => {
     if (!form) return
@@ -110,7 +109,7 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
     if (!Number.isInteger(start) || !Number.isInteger(duration) || start < 0 || duration < 1 || start + duration > project.timeline.totalBars) { setError(`開始小節と長さは1〜${project.timeline.totalBars}の範囲で指定してください`); return }
     const lane = project.lanes.find((candidate) => candidate.id === form.laneId)
     if (!lane) return
-    const block: IdeaBlock = { id: form.blockId ?? newId('block'), label, memo: form.memo, startBar: start, durationBars: duration }
+    const block: IdeaBlock = { id: form.blockId ?? newId('block'), label, memo: form.memo, startBar: start, durationBars: duration, color: form.color }
     if (!canPlace(block, lane.blocks, project.timeline.totalBars)) { setError('同じレーンの別ブロックと重なるため配置できません'); return }
     const mutation: ProjectMutation = form.blockId ? { type: 'block/update', laneId: form.laneId, block } : { type: 'block/add', laneId: form.laneId, block }
     if (commit(mutation, form.blockId ? 'ブロックを更新しました' : 'ブロックを追加しました')) { setSelectedBlockId(block.id); setForm(null) }
@@ -134,7 +133,7 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
   const addMinuteBar = () => {
     if (disabled) return
     const lastStart = Math.max(...project.timeline.minuteBars, 0)
-    const startBar = Math.round(lastStart + minuteSpan)
+    const startBar = project.timeline.minuteBars.length === 0 ? 0 : Math.round(lastStart + minuteSpan)
     const totalBars = Math.max(project.timeline.totalBars, Math.ceil(startBar + minuteSpan))
     if (totalBars > 1024) { setError('1分バーを追加できるのは総小節数1024までです'); return }
     const minuteBars = [...project.timeline.minuteBars, startBar].sort((left, right) => left - right)
@@ -211,15 +210,22 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
     addBlockAt(lane.id, start)
   }
 
+  const adjustWidthFromWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (disabled || event.deltaY === 0) return
+    event.preventDefault()
+    const direction = event.deltaY < 0 ? 1 : -1
+    setBarWidth((value) => adjustBarWidth(value, direction))
+  }
+
   return <TooltipProvider>
     <section aria-label="楽曲のタイムライン" className="flex min-h-0 flex-1 flex-col bg-background">
       <div className="flex flex-wrap items-center gap-2 border-b bg-card px-4 py-2">
         <span className="mr-2 text-sm font-semibold">アイデアレーン</span>
         <Button size="sm" onClick={addLane} disabled={disabled}><Plus />レーン追加</Button>
         <span className="ml-auto text-xs text-muted-foreground">{selected ? `選択中: ${selected.label}` : 'ブロックを選択してください'}</span>
-        <Button size="icon-xs" variant="outline" onClick={() => setBarWidth((value) => BAR_WIDTHS[Math.max(0, BAR_WIDTHS.indexOf(value as typeof BAR_WIDTHS[number]) - 1)])} disabled={disabled || barWidth === BAR_WIDTHS[0]} aria-label="表示倍率を下げる">−</Button>
+        <Button size="icon-xs" variant="outline" onClick={() => setBarWidth((value) => adjustBarWidth(value, -1))} disabled={disabled || barWidth === MIN_BAR_WIDTH} aria-label="表示倍率を下げる">−</Button>
         <span className="w-10 text-center text-xs tabular-nums">{barWidth}px</span>
-        <Button size="icon-xs" variant="outline" onClick={() => setBarWidth((value) => BAR_WIDTHS[Math.min(BAR_WIDTHS.length - 1, BAR_WIDTHS.indexOf(value as typeof BAR_WIDTHS[number]) + 1)])} disabled={disabled || barWidth === BAR_WIDTHS[BAR_WIDTHS.length - 1]} aria-label="表示倍率を上げる">＋</Button>
+        <Button size="icon-xs" variant="outline" onClick={() => setBarWidth((value) => adjustBarWidth(value, 1))} disabled={disabled || barWidth === MAX_BAR_WIDTH} aria-label="表示倍率を上げる">＋</Button>
       </div>
       <div className="min-h-0 flex-1 overflow-auto" onKeyDown={(event) => { if (event.key === 'Escape') { setInteraction(null); setPreview(null) } }}>
         <div style={{ minWidth: 220 + totalWidth }}>
@@ -232,18 +238,19 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
           </div>
           {project.lanes.map((lane) => <div key={lane.id} className="grid grid-cols-[220px_max-content]" style={{ width: 220 + totalWidth }}>
             <LaneHeader lane={lane} disabled={disabled} renameLaneId={renameLaneId} renameDraft={renameDraft} setRenameDraft={setRenameDraft} onStartRename={() => { setRenameLaneId(lane.id); setRenameDraft(lane.name) }} onFinishRename={() => finishRename(lane)} onCancelRename={() => setRenameLaneId(null)} onColorChange={(color) => commit({ type: 'lane/update', laneId: lane.id, name: lane.name, color })} onAddBlock={() => openNewBlock(lane.id)} onDelete={() => setLaneToDelete(lane)} />
-            <div ref={(element) => { rowRefs.current[lane.id] = element }} className="relative h-[88px] cursor-crosshair border-b border-border/70" style={{ width: totalWidth, backgroundImage: 'repeating-linear-gradient(to right, transparent 0, transparent calc(var(--bar-width) - 1px), rgba(148,163,184,.16) var(--bar-width))', ['--bar-width' as string]: `${barWidth}px` }} onClick={(event) => createFromClick(event, lane)} onPointerMove={(event) => movePointer(event, lane)} onPointerUp={applyPreview} onPointerCancel={() => { setInteraction(null); setPreview(null) }}>
-              {lane.blocks.map((block) => <BlockView key={block.id} block={preview?.block.id === block.id ? preview.block : block} color={lane.color} barWidth={barWidth} selected={selectedBlockId === block.id} invalid={preview?.block.id === block.id && !preview.valid} disabled={disabled} onSelect={() => setSelectedBlockId(block.id)} onDoubleClick={() => openEdit(lane.id, block)} onKeyDown={(event) => keyboardBlock(event, lane, block)} onPointerDown={(event, mode) => startPointer(event, lane, block, mode)} onPointerMove={(event) => movePointer(event, lane)} onPointerUp={applyPreview} onPointerCancel={() => { setInteraction(null); setPreview(null) }} />)}
+            <div ref={(element) => { rowRefs.current[lane.id] = element }} className="relative h-[88px] cursor-crosshair border-b border-border/70" style={{ width: totalWidth, backgroundImage: 'repeating-linear-gradient(to right, transparent 0, transparent calc(var(--bar-width) - 1px), rgba(148,163,184,.16) var(--bar-width))', ['--bar-width' as string]: `${barWidth}px` }} onClick={(event) => createFromClick(event, lane)} onWheel={adjustWidthFromWheel} onPointerMove={(event) => movePointer(event, lane)} onPointerUp={applyPreview} onPointerCancel={() => { setInteraction(null); setPreview(null) }}>
+              {lane.blocks.map((block) => <BlockView key={block.id} block={preview?.block.id === block.id ? preview.block : block} color={block.color ?? lane.color} barWidth={barWidth} selected={selectedBlockId === block.id} invalid={preview?.block.id === block.id && !preview.valid} disabled={disabled} onSelect={() => setSelectedBlockId(block.id)} onDoubleClick={() => openEdit(lane.id, block)} onKeyDown={(event) => keyboardBlock(event, lane, block)} onPointerDown={(event, mode) => startPointer(event, lane, block, mode)} onPointerMove={(event) => movePointer(event, lane)} onPointerUp={applyPreview} onPointerCancel={() => { setInteraction(null); setPreview(null) }} />)}
             </div>
           </div>)}
           {project.lanes.length === 0 && <div className="p-10 text-center text-sm text-muted-foreground">「レーン追加」から曲のアイデアを置く場所を作成できます。</div>}
         </div>
       </div>
-      <div className="min-h-6 border-t bg-card px-4 py-1 text-sm" aria-live="polite">{error ? <span className="text-destructive">{error}</span> : notice ? <span className="text-primary">{notice}</span> : <span className="text-muted-foreground">1分バーはドラッグで移動、右端の＋で追加。空き場所をクリックして4小節のブロックを追加できます。</span>}</div>
+      <div className="min-h-6 border-t bg-card px-4 py-1 text-sm" aria-live="polite">{error ? <span className="text-destructive">{error}</span> : notice ? <span className="text-primary">{notice}</span> : <span className="text-muted-foreground">レーン上のホイールで横幅を8px刻みで変更できます。1分バーはドラッグで移動、右端の＋で追加。空き場所をクリックして4小節のブロックを追加できます。</span>}</div>
     </section>
     <Dialog open={form !== null} onOpenChange={(open) => { if (!open) setForm(null) }}><DialogContent><DialogHeader><DialogTitle>{form?.blockId ? 'ブロックを編集' : 'ブロックを追加'}</DialogTitle><DialogDescription>小節番号は1から始まります。重なるブロックは配置できません。</DialogDescription></DialogHeader>{form && <div className="mt-5 grid gap-4">
       <div className="grid gap-2"><Label htmlFor="block-label">ラベル</Label><Input id="block-label" value={form.label} maxLength={120} onChange={(event) => setForm({ ...form, label: event.target.value })} autoFocus /></div>
       <div className="grid gap-2"><Label htmlFor="block-memo">メモ</Label><Textarea id="block-memo" value={form.memo} maxLength={10000} onChange={(event) => setForm({ ...form, memo: event.target.value })} /></div>
+      <fieldset className="grid gap-2"><legend className="text-sm font-medium">色</legend><div className="flex flex-wrap gap-2" role="radiogroup" aria-label="ブロックの色">{LANE_COLORS.map((color) => <button key={color} type="button" className={cn('flex h-9 min-w-20 items-center justify-center rounded-md border px-2 text-xs font-semibold transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring', COLOR_CLASSES[color], form.color === color && 'ring-2 ring-primary ring-offset-2 ring-offset-background')} aria-label={`ブロックの色を${COLOR_LABELS[color]}にする`} aria-pressed={form.color === color} onClick={() => setForm({ ...form, color })}>{form.color === color ? '✓ ' : ''}{COLOR_LABELS[color]}</button>)}</div></fieldset>
       <div className="grid grid-cols-2 gap-3"><div className="grid gap-2"><Label htmlFor="block-start">開始小節</Label><Input id="block-start" inputMode="numeric" value={form.startBar} onChange={(event) => setForm({ ...form, startBar: event.target.value })} /></div><div className="grid gap-2"><Label htmlFor="block-duration">長さ（小節）</Label><Input id="block-duration" inputMode="numeric" value={form.durationBars} onChange={(event) => setForm({ ...form, durationBars: event.target.value })} /></div></div>
     </div>}<DialogFooter><Button variant="outline" onClick={() => setForm(null)}>キャンセル</Button><Button onClick={saveForm}>保存</Button></DialogFooter></DialogContent></Dialog>
     <AlertDialog open={blockToDelete !== null} onOpenChange={(open) => { if (!open) setBlockToDelete(null) }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>ブロックを削除しますか？</AlertDialogTitle><AlertDialogDescription>「{blockToDelete?.block.label}」を削除すると元に戻せません。</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>キャンセル</AlertDialogCancel><AlertDialogAction onClick={removeBlock}>削除</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
@@ -255,8 +262,8 @@ function MinuteBarTrack({ minuteBars, totalWidth, barWidth, minuteWidth, minuteP
   const lastStart = Math.max(...minuteBars, 0)
   return <div className="relative h-[38px] border-t border-border/60 bg-muted/20" style={{ width: totalWidth }} onPointerMove={onMove}>
     {minuteBars.map((startBar, index) => {
-      const visibleWidth = Math.max(28, Math.min(minuteWidth, totalWidth - startBar * barWidth))
       const displayStart = minutePreview?.index === index ? minutePreview.startBar : startBar
+      const visibleWidth = Math.max(28, Math.min(minuteWidth, totalWidth - displayStart * barWidth))
       return <button key={`${startBar}-${index}`} type="button" className={cn('absolute inset-y-1 flex items-center justify-center rounded border border-primary/60 bg-primary/15 px-2 text-xs font-semibold text-primary shadow-sm transition hover:bg-primary/25 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring', disabled && 'cursor-not-allowed opacity-60')} style={{ left: displayStart * barWidth, width: visibleWidth, touchAction: 'none' }} onPointerDown={(event) => onStart(event, index)} onPointerMove={onMove} onPointerUp={onEnd} onPointerCancel={onCancel} onLostPointerCapture={onCancel} aria-label={`1分バー ${index + 1}、開始小節${displayStart + 1}、ドラッグで移動`}><span className="truncate">1分</span></button>
     })}
     {minuteBars.length > 0 && <button type="button" className="absolute inset-y-0 z-10 w-6 -translate-x-1/2 cursor-pointer text-primary transition hover:bg-primary/15 focus-visible:ring-2 focus-visible:ring-ring" style={{ left: Math.min(totalWidth - 1, lastStart * barWidth + minuteWidth) }} onClick={onAdd} disabled={disabled} aria-label="右端に1分バーを追加">＋</button>}
@@ -265,7 +272,7 @@ function MinuteBarTrack({ minuteBars, totalWidth, barWidth, minuteWidth, minuteP
 }
 
 function LaneHeader({ lane, disabled, renameLaneId, renameDraft, setRenameDraft, onStartRename, onFinishRename, onCancelRename, onColorChange, onAddBlock, onDelete }: { lane: IdeaLane; disabled: boolean; renameLaneId: string | null; renameDraft: string; setRenameDraft: (value: string) => void; onStartRename: () => void; onFinishRename: () => void; onCancelRename: () => void; onColorChange: (color: LaneColor) => void; onAddBlock: () => void; onDelete: () => void }) {
-  return <div className="sticky left-0 z-20 flex h-[88px] items-center justify-between gap-2 border-b border-r bg-card px-3">
+  return <div className="sticky left-0 z-40 flex h-[88px] items-center justify-between gap-2 border-b border-r bg-card px-3">
     {renameLaneId === lane.id ? <Input value={renameDraft} onChange={(event) => setRenameDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') onFinishRename(); if (event.key === 'Escape') onCancelRename() }} onBlur={onFinishRename} aria-label="レーン名" autoFocus /> : <button type="button" className="min-w-0 flex-1 truncate text-left text-sm font-semibold" onDoubleClick={onStartRename} title="ダブルクリックで改名">{lane.name}</button>}
     <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon-sm" variant="ghost" disabled={disabled} aria-label={`${lane.name}のメニュー`}><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent><DropdownMenuLabel>レーン操作</DropdownMenuLabel><DropdownMenuItem onSelect={onStartRename}>名前を変更</DropdownMenuItem><DropdownMenuItem onSelect={onAddBlock}>ブロック追加</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuLabel>色</DropdownMenuLabel>{LANE_COLORS.map((color) => <DropdownMenuItem key={color} onSelect={() => onColorChange(color)}>{color === lane.color ? '✓ ' : ''}{COLOR_LABELS[color]}</DropdownMenuItem>)}<DropdownMenuSeparator /><DropdownMenuItem className="text-destructive" onSelect={onDelete}><Trash2 />レーン削除</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
   </div>

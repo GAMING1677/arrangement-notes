@@ -58,6 +58,8 @@ const blockSchema = z
     memo: z.string().max(MAX_BLOCK_MEMO_LENGTH, `メモは${MAX_BLOCK_MEMO_LENGTH}文字以内で指定してください`),
     startBar: z.number().int('開始小節は整数で指定してください').nonnegative('開始小節は0以上で指定してください'),
     durationBars: z.number().int('長さは整数で指定してください').min(1, '長さは1小節以上で指定してください'),
+    // Optional for backwards compatibility with v1 files. validateProject fills it from the lane color.
+    color: laneColor.optional(),
   })
   .strict()
 
@@ -177,7 +179,20 @@ export const validateProject = (value: unknown): Result<ArrangementProject> => {
     return fail(issueMessage(issue.path, issue.message))
   }
 
-  const project = parsed.data as ArrangementProject
+  const project = {
+    ...parsed.data,
+    lanes: parsed.data.lanes.map((lane) => ({
+      ...lane,
+      blocks: lane.blocks.map((block): IdeaBlock => ({
+        id: block.id,
+        label: block.label,
+        memo: block.memo,
+        startBar: block.startBar,
+        durationBars: block.durationBars,
+        color: block.color ?? lane.color,
+      })),
+    })),
+  } as ArrangementProject
   const error = semanticError(project)
   return error ? fail(error) : { ok: true, value: project }
 }
@@ -186,10 +201,27 @@ export const isLaneColor = (value: string): value is LaneColor => laneColor.safe
 
 export const validateBlock = (value: unknown): Result<IdeaBlock> => {
   const parsed = blockSchema.safeParse(value)
-  return parsed.success ? { ok: true, value: parsed.data } : fail(parsed.error.issues[0].message)
+  return parsed.success
+    ? { ok: true, value: { ...parsed.data, color: parsed.data.color ?? 'cyan' } as IdeaBlock }
+    : fail(parsed.error.issues[0].message)
 }
 
 export const validateLane = (value: unknown): Result<IdeaLane> => {
   const parsed = laneSchema.safeParse(value)
-  return parsed.success ? { ok: true, value: parsed.data } : fail(parsed.error.issues[0].message)
+  return parsed.success
+    ? {
+        ok: true,
+        value: {
+          ...parsed.data,
+          blocks: parsed.data.blocks.map((block): IdeaBlock => ({
+            id: block.id,
+            label: block.label,
+            memo: block.memo,
+            startBar: block.startBar,
+            durationBars: block.durationBars,
+            color: block.color ?? parsed.data.color,
+          })),
+        },
+      }
+    : fail(parsed.error.issues[0].message)
 }

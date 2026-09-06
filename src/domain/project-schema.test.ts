@@ -13,6 +13,15 @@ describe('validateProject', () => {
   it('accepts the documented v1 project', () => {
     const result = validateProject(validProject())
     expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.lanes[0].blocks[0].color).toBe('cyan')
+  })
+
+  it('inherits a lane color for legacy blocks without an individual color', () => {
+    const project = validProject()
+    delete (project.lanes[0].blocks[0] as Partial<typeof project.lanes[0]['blocks'][0]>).color
+    const result = validateProject(project)
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.lanes[0].blocks[0].color).toBe('cyan')
   })
 
   it('rejects unknown keys and malformed UTC timestamps', () => {

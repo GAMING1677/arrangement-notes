@@ -21,6 +21,7 @@ const block = (id = blockId, startBar = 0, durationBars = 4): IdeaBlock => ({
   memo: '',
   startBar,
   durationBars,
+  color: 'cyan',
 })
 
 const projectWithLane = (): ArrangementProject => {
@@ -134,5 +135,33 @@ describe('project reducer', () => {
     expect(
       applyProjectMutation(removedLane.value, { type: 'lane/remove', laneId }, '2026-09-06T00:05:00.000Z').ok,
     ).toBe(false)
+  })
+
+  it('stores movable one-minute bar positions and can extend the timeline', () => {
+    const original = projectWithLane()
+    const changed = applyProjectMutation(original, { type: 'timeline/minute-bars', minuteBars: [2, 32], totalBars: 64 }, '2026-09-06T00:02:00.000Z')
+    expect(changed.ok).toBe(true)
+    if (!changed.ok) return
+    expect(changed.value.timeline).toEqual({ totalBars: 64, minuteBars: [2, 32] })
+
+    const extended = applyProjectMutation(changed.value, { type: 'timeline/minute-bars', minuteBars: [2, 32, 62], totalBars: 92 }, '2026-09-06T00:03:00.000Z')
+    expect(extended.ok).toBe(true)
+    if (!extended.ok) return
+    expect(extended.value.timeline.totalBars).toBe(92)
+  })
+
+  it('stores an individual block color', () => {
+    const original = projectWithLane()
+    const changed = applyProjectMutation(original, { type: 'block/add', laneId, block: block() }, LATER)
+    if (!changed.ok) throw new Error(changed.error)
+
+    const recolored = applyProjectMutation(
+      changed.value,
+      { type: 'block/update', laneId, block: { ...changed.value.lanes[0].blocks[0], color: 'rose' } },
+      '2026-09-06T00:02:00.000Z',
+    )
+    expect(recolored.ok).toBe(true)
+    if (!recolored.ok) return
+    expect(recolored.value.lanes[0].blocks[0].color).toBe('rose')
   })
 })

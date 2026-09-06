@@ -12,6 +12,8 @@ export interface IdeaBlock {
   /** Zero-based bar index; end = startBar + durationBars (exclusive). */
   startBar: number
   durationBars: number
+  /** Block color. Legacy files without this field inherit their lane color on load. */
+  color: LaneColor
 }
 
 export interface IdeaLane {

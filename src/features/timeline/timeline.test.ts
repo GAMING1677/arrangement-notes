@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { barFromClientX, blockStyle, canPlace, collides, moveBlock, overlaps, resizeBlock, snapDelta } from './timeline'
+import { adjustBarWidth, barFromClientX, blockStyle, canPlace, collides, MAX_BAR_WIDTH, MIN_BAR_WIDTH, moveBlock, overlaps, resizeBlock, snapDelta } from './timeline'
 
-const block = (id: string, startBar: number, durationBars: number) => ({ id, label: id, memo: '', startBar, durationBars })
+const block = (id: string, startBar: number, durationBars: number) => ({ id, label: id, memo: '', startBar, durationBars, color: 'cyan' as const })
 
 describe('timeline geometry', () => {
   it('uses the row rect coordinate without adding scrollLeft twice', () => {
@@ -33,5 +33,17 @@ describe('timeline geometry', () => {
     expect(canPlace(block('a', 3, 2), [other], 16)).toBe(false)
     expect(canPlace(block('a', 6, 2), [other], 16)).toBe(true)
     expect(canPlace(block('a', 15, 2), [], 16)).toBe(false)
+  })
+})
+
+describe('adjustBarWidth', () => {
+  it('changes the width by 8px', () => {
+    expect(adjustBarWidth(48, 1)).toBe(56)
+    expect(adjustBarWidth(48, -1)).toBe(40)
+  })
+
+  it('clamps the width to the supported range', () => {
+    expect(adjustBarWidth(MAX_BAR_WIDTH, 1)).toBe(MAX_BAR_WIDTH)
+    expect(adjustBarWidth(MIN_BAR_WIDTH, -1)).toBe(MIN_BAR_WIDTH)
   })
 })
