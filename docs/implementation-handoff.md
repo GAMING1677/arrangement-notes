@@ -4,7 +4,7 @@
 
 ## 現在地
 
-設計と基盤のみ。タイムライン編集、設定変更、JSON入出力、実行時検証は未実装。App.tsxは準備中と明示した静的な画面骨格。モデルを起動・変更したり、別タスクを作成したりはしていない。
+初版実装と統合が完了。App.tsxがproject・保存基準snapshot・busyを所有し、タイムライン、プロジェクト設定、JSON入出力、実行時検証を接続済み。Cloudflareはdry-runのみで、公開は未実施。
 
 最初にREADME.md、本書、docs/design.md、src/domain/project.ts、package.jsonを読む。既存の設定とlockfileを再利用し、再scaffoldしない。今回の目的は手戻りと実装コストを抑えること。1段階ずつ完了させ、関係しない依存追加・外観の作り直し・大規模な抽象化を避ける。
 
@@ -17,7 +17,7 @@
 | 3 | ブロック作成・選択・ダイアログ編集・削除・メモTooltip | A03、A06。大きなラベルとメモアイコン |
 | 4 | 移動・両端伸縮・スナップ・衝突・取消・キーボード操作 | A04、A05、A11 |
 | 5 | JSONダウンロード・検証読込・未保存確認・通知 | A07、A08、A09。往復テスト |
-| 6 | 画面操作確認、エラー修正、Cloudflare dry-run | npm run check、npm run cf:check。A01〜A11を確認 |
+| 6 | 画面操作確認、エラー修正、Cloudflare dry-run | `npm run check`、`npm run cf:check`、実画面でA01〜A11を確認済み |
 | 7 | 公開する依頼を受けた段階でCloudflareへデプロイ | A12。公開URLで保存→読込を確認 |
 
 shadcnの追加例: `npx shadcn@latest add input textarea label select dialog alert-dialog dropdown-menu tooltip`。CLIの更新内容を確認し、src/index.cssのテーマを不用意に置き換えない。

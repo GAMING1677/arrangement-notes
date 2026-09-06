@@ -34,7 +34,7 @@ function newId(prefix: string) {
 }
 
 function initialForm(laneId: string, block?: IdeaBlock): FormState {
-  return { laneId, blockId: block?.id, label: block?.label ?? 'アイデア', memo: block?.memo ?? '', startBar: String((block?.startBar ?? 0) + 1), durationBars: String(block?.durationBars ?? 4) }
+  return { laneId, blockId: block?.id || undefined, label: block?.label ?? 'アイデア', memo: block?.memo ?? '', startBar: String((block?.startBar ?? 0) + 1), durationBars: String(block?.durationBars ?? 4) }
 }
 
 export function TimelineEditor({ project, onMutation, disabled = false }: TimelineEditorProps) {

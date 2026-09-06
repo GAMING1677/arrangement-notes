@@ -2,6 +2,8 @@
 
 2026-09-06。各担当は独立したCodexタスクとworktreeで進める。
 
+統合結果（2026-09-06）: A `6e06840ee78d9d74e8720d9530f8b3acbd2a13b1`、B `b66ec73ba3afccb78dbe7eb4eb6bdf0e92ef3c36`、C `933a11f4a0fb207dea1f2ddede8a25d4afb6fcec`をDの`codex/integration`へ取り込み済み。DでApp.tsx接続、Bのshadcn部品への統一、実画面確認、Cloudflare dry-runまで完了。masterへのマージ・公開は未実施。
+
 ## 依存順
 
 ```text

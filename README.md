@@ -2,7 +2,7 @@
 
 楽曲の展開を、小節ベースのアイデアレーンに記録するWebアプリ。
 
-**現在は設計と開発基盤のみです。編集機能・JSON保存/読み込みは未実装で、Cloudflareへの公開もしていません。**
+**編集機能・JSON保存/読み込みを実装済みです。Cloudflareへの公開はしていません。**
 
 ## ドキュメント
 
@@ -37,23 +37,24 @@ npm run build
 npm run cf:check
 ```
 
-`npm run check`はlint・テスト・ビルドを順に実行。現在のテストはサンプルJSONと型の契約確認のみで、未実装機能の動作を保証しない。実装時に設計書の境界・失敗ケースを追加する。
+`npm run check`はlint・テスト・型検査・ビルドを順に実行する。`npm run cf:check`は同じビルド後にCloudflareのdry-runを行う。
 
 ## 現在用意しているもの
 
-- React + TypeScript strict + Vite、Tailwind CSS v4、shadcnの設定とButton
-- 日本語・ダークテーマの静的な画面骨格
-- プロジェクト形式v1の型定義とサンプル
+- React + TypeScript strict + Vite、Tailwind CSS v4、shadcn部品
+- 日本語・ダークテーマのタイムライン編集画面
+- プロジェクト形式v1のZod検証、純粋な確定編集、JSON入出力
+- レーン/ブロック編集、メモTooltip、キーボード移動・伸縮、未保存確認
 - ESLint、Vitest、Cloudflare静的配信の設定
 
 ソースはsrc/、設計はdocs/、例はexamples/。ログインやバックエンドは設計に含まれない。
 
-## 基盤の確認結果（2026-09-06）
+## 統合後の確認結果（2026-09-06）
 
-- ESLint: エラー・警告なし
-- Vitest: サンプルJSONの契約検査2件成功
-- TypeScript / Vite: 本番ビルド成功
-- Wrangler: 静的アセットのdry-run成功（公開なし）
+- `npm run check`: 成功（6ファイル・22テスト、lint・型検査・本番ビルド）
+- `npm run cf:check`: 成功（Wrangler静的アセットdry-run、公開なし）
+- 実画面: レーン追加/改名、BPM・拍子・総小節数、ブロック追加/編集、メモ表示、キーボード移動/伸縮、倍率、横スクロール、保存通知、未保存確認を確認
+- ブラウザコンソール: エラーなし
 - package.jsonとpackage-lock.jsonの依存定義一致を確認
 
-確認環境はWindows / Node.js 22.14.0。解決済みの主な版はReact 19.2.8、Vite 7.3.6、TypeScript 5.9.3、Wrangler 4.129.0。Codexの制限環境ではビルドツールの親ディレクトリ読み取りが拒否されたため、検査は承認された通常環境で実行した。ブラウザ操作・実機UI・公開URLの検証は今回の対象外。
+確認環境はWindows / Node.js 22.14.0。解決済みの主な版はReact 19.2.8、Vite 7.3.6、TypeScript 5.9.3、Wrangler 4.129.0。隔離worktreeの依存解決では親ディレクトリ権限により通常実行が止まったため、最終検査は承認された通常環境で実行した。公開URLとA12の実運用確認は未実施（公開していないため）。
