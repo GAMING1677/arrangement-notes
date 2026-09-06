@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import type { IdeaBlock, IdeaLane, LaneColor } from '@/domain/project'
 import type { ProjectMutation, TimelineEditorProps } from '@/domain/editor-contracts'
 import { cn } from '@/lib/utils'
@@ -438,14 +438,12 @@ function CreationPreview({ block, barWidth, invalid }: { block: IdeaBlock; barWi
 
 function BlockView({ block, color, barWidth, selected, invalid, disabled, onSelect, onDoubleClick, onKeyDown, onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: { block: IdeaBlock; color: LaneColor; barWidth: number; selected: boolean; invalid: boolean; disabled: boolean; onSelect: (event: ReactMouseEvent<HTMLButtonElement>) => void; onDoubleClick: () => void; onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => void; onPointerDown: (event: ReactPointerEvent<HTMLElement>, mode: Interaction['mode']) => void; onPointerMove: (event: ReactPointerEvent<HTMLElement>) => void; onPointerUp: () => void; onPointerCancel: () => void }) {
   const memo = block.memo.trim()
-  return <Tooltip className={cn('absolute inset-y-2 overflow-visible', selected && 'z-10')} style={{ left: block.startBar * barWidth, width: block.durationBars * barWidth }}>
-    <TooltipTrigger asChild>
-      <button type="button" className={cn('group relative flex h-full w-full items-center overflow-hidden rounded-md border px-3 text-left text-sm font-semibold shadow-sm transition focus-visible:ring-2 focus-visible:ring-ring', COLOR_CLASSES[color], selected && 'ring-2 ring-primary', invalid && 'border-2 border-destructive bg-destructive/30', disabled && 'cursor-not-allowed opacity-60')} style={{ touchAction: 'none' }} onClick={onSelect} onDoubleClick={(event) => { event.stopPropagation(); onDoubleClick() }} onKeyDown={onKeyDown} onPointerDown={(event) => onPointerDown(event, 'move')} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} onLostPointerCapture={onPointerCancel} aria-label={`${block.label}、開始小節${block.startBar + 1}、${block.durationBars}小節${memo ? '、メモあり' : ''}`}>
-        <div className="min-w-0 flex-1 truncate">{block.label}</div>{memo && <span className="ml-2 shrink-0" aria-label="メモあり"><StickyNote className="size-4" /></span>}
+  return <div className={cn('group absolute inset-y-2 overflow-visible', selected && 'z-10')} style={{ left: block.startBar * barWidth, width: block.durationBars * barWidth }}>
+    <button type="button" className={cn('relative flex h-full w-full items-center overflow-hidden rounded-md border px-3 text-left text-sm font-semibold shadow-sm transition focus-visible:ring-2 focus-visible:ring-ring', COLOR_CLASSES[color], selected && 'ring-2 ring-primary', invalid && 'border-2 border-destructive bg-destructive/30', disabled && 'cursor-not-allowed opacity-60')} style={{ touchAction: 'none' }} onClick={onSelect} onDoubleClick={(event) => { event.stopPropagation(); onDoubleClick() }} onKeyDown={onKeyDown} onPointerDown={(event) => onPointerDown(event, 'move')} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} onLostPointerCapture={onPointerCancel} aria-label={`${block.label}、開始小節${block.startBar + 1}、${block.durationBars}小節${memo ? '、メモあり' : ''}`}>
+      <div className="min-w-0 flex-1 truncate">{block.label}</div>{memo && <span className="ml-2 shrink-0" aria-label="メモあり"><StickyNote className="size-4" /></span>}
       <span className="absolute inset-y-0 left-0 w-2 cursor-ew-resize" role="presentation" onPointerDown={(event) => onPointerDown(event, 'resize-left')} />
       <span className="absolute inset-y-0 right-0 w-2 cursor-ew-resize" role="presentation" onPointerDown={(event) => onPointerDown(event, 'resize-right')} />
-      </button>
-    </TooltipTrigger>
-    {memo && <TooltipContent>{memo}</TooltipContent>}
-  </Tooltip>
+    </button>
+    {memo && <div role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-max max-w-[min(360px,calc(100vw-2rem))] -translate-x-1/2 whitespace-pre-wrap break-words rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">{memo}</div>}
+  </div>
 }

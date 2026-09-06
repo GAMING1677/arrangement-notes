@@ -29,7 +29,7 @@ export function DialogContent({ className, children, ...props }: React.Component
     return () => document.removeEventListener('keydown', handler)
   }, [context])
   if (!context?.open || typeof document === 'undefined') return null
-  return createPortal(<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) context.setOpen(false) }}><div role="dialog" aria-modal="true" className={cn('w-full max-w-lg rounded-lg border bg-card p-6 text-card-foreground shadow-xl', className)} {...props}><button type="button" aria-label="閉じる" className="absolute" onClick={() => context.setOpen(false)}><X className="size-4" /></button>{children}</div></div>, document.body)
+  return createPortal(<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) context.setOpen(false) }}><div role="dialog" aria-modal="true" className={cn('relative w-full max-w-lg rounded-lg border bg-card p-6 text-card-foreground shadow-xl', className)} {...props}><button type="button" aria-label="閉じる" className="absolute right-4 top-4 inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => context.setOpen(false)}><X className="size-4" /></button>{children}</div></div>, document.body)
 }
 
 export function DialogHeader({ className, ...props }: React.ComponentProps<'div'>) { return <div className={cn('flex flex-col gap-1.5 text-left', className)} {...props} /> }
