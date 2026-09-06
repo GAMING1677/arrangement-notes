@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import packageJson from '../package.json'
 import { ProjectControls } from '@/features/project/ProjectControls'
 import { TimelineEditor } from '@/features/timeline/TimelineEditor'
 import { applyProjectMutation, createProject } from '@/domain/project-reducer'
@@ -62,6 +63,7 @@ export default function App() {
         onBusyChange={setBusy}
       />
       <TimelineEditor project={project} onMutation={onMutation} disabled={busy} />
+      <span className="fixed bottom-2 right-2 z-40 rounded border border-border/70 bg-card/90 px-2 py-1 text-[11px] font-medium text-muted-foreground shadow-sm" aria-label={`アプリのバージョン ${packageJson.version}`}>v{packageJson.version}</span>
     </main>
   )
 }

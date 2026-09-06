@@ -318,7 +318,7 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
   }
 
   const adjustWidthFromWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    if (disabled || event.deltaY === 0) return
+    if (disabled || event.shiftKey || event.deltaY === 0) return
     event.preventDefault()
     const direction = event.deltaY < 0 ? 1 : -1
     setBarWidth((value) => adjustBarWidth(value, direction))
@@ -357,7 +357,7 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
           </div>
           {project.lanes.map((lane) => <div key={lane.id} className="grid grid-cols-[220px_max-content]" style={{ width: 220 + totalWidth }}>
             <LaneHeader lane={lane} disabled={disabled} renameLaneId={renameLaneId} renameDraft={renameDraft} setRenameDraft={setRenameDraft} onStartRename={() => { setRenameLaneId(lane.id); setRenameDraft(lane.name) }} onFinishRename={() => finishRename(lane)} onCancelRename={() => setRenameLaneId(null)} onColorChange={(color) => commit({ type: 'lane/update', laneId: lane.id, name: lane.name, color })} onAddBlock={() => openNewBlock(lane.id)} onDelete={() => setLaneToDelete(lane)} />
-            <div ref={(element) => { rowRefs.current[lane.id] = element }} className="relative h-[88px] cursor-crosshair border-b border-border/70" style={{ width: totalWidth, backgroundImage: 'repeating-linear-gradient(to right, transparent 0, transparent calc(var(--bar-width) - 1px), rgba(148,163,184,.16) var(--bar-width))', ['--bar-width' as string]: `${barWidth}px` }} onDoubleClick={(event) => createOneBar(event, lane)} onWheel={adjustWidthFromWheel} onPointerDown={(event) => startCreateOrSelect(event, lane)} onPointerMove={(event) => { movePointer(event); moveCreateOrSelect(event, lane) }} onPointerUp={() => { applyPreview(); applyCreateOrSelect(lane) }} onPointerCancel={() => { setInteraction(null); setPreview(null); setCreateInteraction(null); setCreatePreview(null); setSelectionInteraction(null) }}>
+            <div ref={(element) => { rowRefs.current[lane.id] = element }} className="relative h-[88px] cursor-crosshair border-b border-border/70" style={{ width: totalWidth, backgroundImage: 'repeating-linear-gradient(to right, transparent 0, transparent calc(var(--bar-width) - 1px), rgba(148,163,184,.16) var(--bar-width))', ['--bar-width' as string]: `${barWidth}px` }} onDoubleClick={(event) => createOneBar(event, lane)} onPointerDown={(event) => startCreateOrSelect(event, lane)} onPointerMove={(event) => { movePointer(event); moveCreateOrSelect(event, lane) }} onPointerUp={() => { applyPreview(); applyCreateOrSelect(lane) }} onPointerCancel={() => { setInteraction(null); setPreview(null); setCreateInteraction(null); setCreatePreview(null); setSelectionInteraction(null) }}>
               {selectionInteraction?.laneId === lane.id && <div className="pointer-events-none absolute inset-y-2 z-20 rounded border border-primary bg-primary/15" style={{ left: Math.min(selectionInteraction.startBar, selectionInteraction.endBar) * barWidth, width: (Math.abs(selectionInteraction.endBar - selectionInteraction.startBar) + 1) * barWidth }} />}
               {createPreview?.laneId === lane.id && <CreationPreview block={createPreview.block} barWidth={barWidth} invalid={!createPreview.valid} />}
               {lane.blocks.map((block) => {
