@@ -1,5 +1,9 @@
 import type { IdeaBlock } from '@/domain/project'
 
+export function barsPerMinute(bpm: number, beatsPerBar: number, beatUnit: number): number {
+  return bpm / (beatsPerBar * (4 / beatUnit))
+}
+
 export type TimelineInteraction = 'move' | 'resize-left' | 'resize-right'
 
 export function clampBar(value: number, minimum: number, maximum: number): number {

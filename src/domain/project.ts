@@ -29,7 +29,7 @@ export interface ArrangementProject {
   createdAt: string
   updatedAt: string
   tempo: { bpm: number; timeSignature: { beatsPerBar: number; beatUnit: BeatUnit } }
-  timeline: { totalBars: number }
+  timeline: { totalBars: number; minuteBars: number[] }
   lanes: IdeaLane[]
 }
 

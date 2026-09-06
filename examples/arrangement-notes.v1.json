@@ -9,7 +9,7 @@
     "bpm": 128,
     "timeSignature": { "beatsPerBar": 4, "beatUnit": 4 }
   },
-  "timeline": { "totalBars": 64 },
+  "timeline": { "totalBars": 64, "minuteBars": [0] },
   "lanes": [
     {
       "id": "15b892d9-eec3-4c4a-bff6-263c9056e6ec",

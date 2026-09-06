@@ -5,6 +5,7 @@ export type Result<T> = { ok: true; value: T } | { ok: false; error: string }
 
 export type ProjectMutation =
   | { type: 'project/settings'; name: string; tempo: ArrangementProject['tempo']; totalBars: number }
+  | { type: 'timeline/minute-bars'; minuteBars: number[]; totalBars: number }
   | { type: 'lane/add'; lane: IdeaLane }
   | { type: 'lane/update'; laneId: string; name: string; color: LaneColor }
   | { type: 'lane/remove'; laneId: string }

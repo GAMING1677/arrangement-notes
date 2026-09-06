@@ -101,6 +101,7 @@ const projectShapeSchema = z
           .int('総小節数は整数で指定してください')
           .min(1, '総小節数は1以上で指定してください')
           .max(MAX_TOTAL_BARS, `総小節数は${MAX_TOTAL_BARS}以下で指定してください`),
+        minuteBars: z.array(z.number().int().nonnegative()).max(MAX_TOTAL_BARS, '1分バーが多すぎます').default([0]),
       })
       .strict(),
     lanes: z.array(laneSchema).max(MAX_LANES, `レーンは${MAX_LANES}件以内で指定してください`),
@@ -119,6 +120,14 @@ const semanticError = (project: ArrangementProject): string | undefined => {
   const updatedAt = Date.parse(project.updatedAt)
   if (updatedAt < createdAt) {
     return 'updatedAtはcreatedAt以降の日時にしてください'
+  }
+
+  const minuteBarStarts = project.timeline.minuteBars
+  if (minuteBarStarts.some((startBar) => startBar >= project.timeline.totalBars)) {
+    return '1分バーの開始位置が曲末を超えています'
+  }
+  if (new Set(minuteBarStarts).size !== minuteBarStarts.length) {
+    return '1分バーの位置が重複しています'
   }
 
   const laneIds = new Set<string>()

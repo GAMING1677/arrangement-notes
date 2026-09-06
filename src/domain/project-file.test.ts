@@ -17,7 +17,7 @@ describe('project file conversion', () => {
     const parsed = parseProject(serialized.value)
     expect(parsed.ok).toBe(true)
     if (!parsed.ok) return
-    expect(parsed.value).toEqual({ ...project(), lanes: project().lanes.map((lane, index) => ({
+    expect(parsed.value).toEqual({ ...project(), timeline: { ...project().timeline, minuteBars: [0] }, lanes: project().lanes.map((lane, index) => ({
       ...lane,
       blocks: index === 0 ? [...lane.blocks].sort((a, b) => a.startBar - b.startBar || a.id.localeCompare(b.id)) : lane.blocks,
     })) })
