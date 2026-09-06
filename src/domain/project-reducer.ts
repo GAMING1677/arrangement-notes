@@ -49,7 +49,7 @@ export const createProject = (id: string, now: string): ArrangementProject => {
         beatUnit: DEFAULT_PROJECT_SETTINGS.beatUnit,
       },
     },
-    timeline: { totalBars: DEFAULT_PROJECT_SETTINGS.totalBars },
+    timeline: { totalBars: DEFAULT_PROJECT_SETTINGS.totalBars, minuteBars: [0] },
     lanes: [],
   }
   const validated = validateProject(project)
@@ -78,7 +78,10 @@ export const applyProjectMutation = (
         bpm: mutation.tempo.bpm,
         timeSignature: { ...mutation.tempo.timeSignature },
       }
-      next.timeline = { totalBars: mutation.totalBars }
+      next.timeline = { totalBars: mutation.totalBars, minuteBars: [...next.timeline.minuteBars] }
+      break
+    case 'timeline/minute-bars':
+      next.timeline = { totalBars: mutation.totalBars, minuteBars: [...mutation.minuteBars] }
       break
     case 'lane/add':
       next.lanes.push(cloneLane(mutation.lane))
