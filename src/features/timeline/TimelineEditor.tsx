@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { MoreHorizontal, Plus, StickyNote, Trash2 } from 'lucide-react'
+import { MoreHorizontal, Pencil, Plus, StickyNote, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -8,10 +8,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import type { IdeaBlock, IdeaLane, LaneColor } from '@/domain/project'
+import type { IdeaBlock, IdeaLane, LaneColor, TimeSignatureChange } from '@/domain/project'
 import type { ProjectMutation, TimelineEditorProps } from '@/domain/editor-contracts'
 import { cn } from '@/lib/utils'
-import { adjustBarWidth, barFromClientX, barsPerMinute, canPlace, moveBlock, resizeBlock, snapDelta, MAX_BAR_WIDTH, MIN_BAR_WIDTH } from './timeline'
+import { adjustBarWidth, barFromClientX, clampMinuteGuideStart, minuteGuideDurationBars, canPlace, moveBlock, resizeBlock, snapDelta, MAX_BAR_WIDTH, MIN_BAR_WIDTH } from './timeline'
 
 const LANE_COLORS: LaneColor[] = ['cyan', 'violet', 'amber', 'emerald', 'rose', 'blue']
 const COLOR_CLASSES: Record<LaneColor, string> = {
@@ -26,6 +26,7 @@ const COLOR_LABELS: Record<LaneColor, string> = { cyan: 'シアン', violet: '�
 const SKIP_BLOCK_DELETE_CONFIRMATION_KEY = 'arrangement-notes:skip-block-delete-confirmation'
 
 type FormState = { laneId: string; blockId?: string; label: string; memo: string; startBar: string; durationBars: string; color: LaneColor }
+type TimeSignatureForm = { startBar: string; beatsPerBar: string; beatUnit: string }
 type BlockRef = { laneId: string; block: IdeaBlock }
 type Interaction = { laneId: string; blockId: string; mode: 'move' | 'resize-left' | 'resize-right'; pointerId: number; initialClientX: number; initialBlocks: BlockRef[]; moved: boolean }
 type MinuteInteraction = { index: number; pointerId: number; initialClientX: number; initialStartBar: number; moved: boolean }
@@ -79,12 +80,14 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
   const [selectionInteraction, setSelectionInteraction] = useState<SelectionInteraction | null>(null)
   const [minuteInteraction, setMinuteInteraction] = useState<MinuteInteraction | null>(null)
   const [minutePreview, setMinutePreview] = useState<{ index: number; startBar: number } | null>(null)
+  const [timeSignatureDialogOpen, setTimeSignatureDialogOpen] = useState(false)
+  const [timeSignatureForm, setTimeSignatureForm] = useState<TimeSignatureForm>({ startBar: '2', beatsPerBar: '4', beatUnit: '4' })
+  const [editingTimeSignatureStartBar, setEditingTimeSignatureStartBar] = useState<number | null>(null)
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
 
   const totalWidth = project.timeline.totalBars * barWidth
-  const minuteSpan = Math.max(1, barsPerMinute(project.tempo.bpm, project.tempo.timeSignature.beatsPerBar, project.tempo.timeSignature.beatUnit))
-  const minuteWidth = minuteSpan * barWidth
+  const minuteGuideSpan = (startBar: number) => minuteGuideDurationBars(startBar, project.timeline.totalBars, project.tempo.bpm, project.tempo.timeSignature, project.timeline.timeSignatureChanges)
   const allBlocks = useMemo(() => project.lanes.flatMap((lane) => lane.blocks.map((block) => ({ laneId: lane.id, block }))), [project.lanes])
   const selectedBlocks = useMemo(() => allBlocks.filter(({ block }) => selectedBlockIds.includes(block.id)), [allBlocks, selectedBlockIds])
   const selected = selectedBlocks[0]?.block
@@ -206,11 +209,59 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
   const addMinuteBar = () => {
     if (disabled) return
     const lastStart = Math.max(...project.timeline.minuteBars, 0)
-    const startBar = project.timeline.minuteBars.length === 0 ? 0 : Math.round(lastStart + minuteSpan)
-    const totalBars = Math.max(project.timeline.totalBars, Math.ceil(startBar + minuteSpan))
+    const startBar = project.timeline.minuteBars.length === 0 ? 0 : Math.round(lastStart + minuteGuideSpan(lastStart))
+    const totalBars = Math.max(project.timeline.totalBars, Math.ceil(startBar + minuteGuideSpan(startBar)))
     if (totalBars > 1024) { setError('1分バーを追加できるのは総小節数1024までです'); return }
     const minuteBars = [...project.timeline.minuteBars, startBar].sort((left, right) => left - right)
     commit({ type: 'timeline/minute-bars', minuteBars, totalBars }, '1分バーを追加しました')
+  }
+
+  const openTimeSignatureEditor = (change?: TimeSignatureChange) => {
+    if (disabled || project.timeline.totalBars < 2) return
+    const defaultStart = change?.startBar ?? Math.min(project.timeline.totalBars - 1, Math.max(1, (project.timeline.timeSignatureChanges.at(-1)?.startBar ?? 0) + 4))
+    setEditingTimeSignatureStartBar(change?.startBar ?? null)
+    setTimeSignatureForm({
+      startBar: String(defaultStart + 1),
+      beatsPerBar: String(change?.beatsPerBar ?? project.tempo.timeSignature.beatsPerBar),
+      beatUnit: String(change?.beatUnit ?? project.tempo.timeSignature.beatUnit),
+    })
+    setTimeSignatureDialogOpen(true)
+  }
+
+  const saveTimeSignatureChange = () => {
+    const startBar = Number(timeSignatureForm.startBar) - 1
+    const beatsPerBar = Number(timeSignatureForm.beatsPerBar)
+    const beatUnit = Number(timeSignatureForm.beatUnit)
+    if (!Number.isInteger(startBar) || startBar < 1 || startBar >= project.timeline.totalBars) {
+      setError(`拍子変更の開始小節は2〜${project.timeline.totalBars}小節目で指定してください`)
+      return
+    }
+    if (!Number.isInteger(beatsPerBar) || beatsPerBar < 1 || beatsPerBar > 16) {
+      setError('拍子の分子は1〜16の整数で入力してください')
+      return
+    }
+    if (beatUnit !== 2 && beatUnit !== 4 && beatUnit !== 8 && beatUnit !== 16) {
+      setError('拍子の分母は2、4、8、16のいずれかを選択してください')
+      return
+    }
+    if (project.timeline.timeSignatureChanges.some((change) => change.startBar === startBar && change.startBar !== editingTimeSignatureStartBar)) {
+      setError('同じ小節に別の拍子変更があります')
+      return
+    }
+    const changes = project.timeline.timeSignatureChanges
+      .filter((change) => change.startBar !== editingTimeSignatureStartBar)
+      .concat({ startBar, beatsPerBar, beatUnit })
+      .sort((left, right) => left.startBar - right.startBar)
+    if (commit({ type: 'timeline/time-signature-changes', changes }, '拍子変更を更新しました')) {
+      setTimeSignatureDialogOpen(false)
+      setEditingTimeSignatureStartBar(null)
+    }
+  }
+
+  const removeTimeSignatureChange = (startBar: number) => {
+    if (commit({ type: 'timeline/time-signature-changes', changes: project.timeline.timeSignatureChanges.filter((change) => change.startBar !== startBar) }, '拍子変更を削除しました')) {
+      if (editingTimeSignatureStartBar === startBar) setTimeSignatureDialogOpen(false)
+    }
   }
 
   const startMinutePointer = (event: ReactPointerEvent<HTMLButtonElement>, index: number) => {
@@ -225,8 +276,7 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
   const moveMinutePointer = (event: ReactPointerEvent<HTMLElement>) => {
     if (!minuteInteraction || minuteInteraction.pointerId !== event.pointerId) return
     const delta = snapDelta(event.clientX, minuteInteraction.initialClientX, barWidth)
-    const maximum = Math.max(0, Math.floor(project.timeline.totalBars - minuteSpan))
-    const startBar = Math.min(maximum, Math.max(0, minuteInteraction.initialStartBar + delta))
+    const startBar = clampMinuteGuideStart(minuteInteraction.initialStartBar + delta, project.timeline.totalBars, project.tempo.bpm, project.tempo.timeSignature, project.timeline.timeSignatureChanges)
     setMinuteInteraction({ ...minuteInteraction, moved: minuteInteraction.moved || delta !== 0 })
     setMinutePreview({ index: minuteInteraction.index, startBar })
   }
@@ -371,6 +421,7 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
       <div className="flex flex-wrap items-center gap-2 border-b bg-card px-4 py-2">
         <span className="mr-2 text-sm font-semibold">アイデアレーン</span>
         <Button size="sm" onClick={addLane} disabled={disabled}><Plus />レーン追加</Button>
+        <Button size="sm" variant="outline" onClick={() => openTimeSignatureEditor()} disabled={disabled || project.timeline.totalBars < 2}>拍子変更{project.timeline.timeSignatureChanges.length > 0 ? ` (${project.timeline.timeSignatureChanges.length})` : ''}</Button>
         <span className="ml-auto text-xs text-muted-foreground">{selectedBlocks.length > 1 ? `${selectedBlocks.length}個のブロックを選択中` : selected ? `選択中: ${selected.label}` : 'ブロックを選択してください'}</span>
         <Button size="icon-xs" variant="outline" onClick={() => setBarWidth((value) => adjustBarWidth(value, -1))} disabled={disabled || barWidth === MIN_BAR_WIDTH} aria-label="表示倍率を下げる">−</Button>
         <span className="w-10 text-center text-xs tabular-nums">{barWidth}px</span>
@@ -386,8 +437,9 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
             <div className="sticky left-0 z-40 row-span-2 flex h-[94px] items-center border-r bg-card px-4 text-sm font-medium">レーン / 小節</div>
             <div className="relative h-14" style={{ width: totalWidth }} onWheel={adjustWidthFromWheel} aria-label="小節ルーラー">
               {Array.from({ length: project.timeline.totalBars }, (_, index) => <div key={index} className={cn('absolute inset-y-0 border-l border-border/70 px-2 pt-5 text-xs text-muted-foreground', index % 4 === 0 && 'border-l-2 border-primary/40 font-semibold')} style={{ left: index * barWidth, width: barWidth }}>{index % Math.max(1, Math.ceil(48 / barWidth)) === 0 ? index + 1 : ''}</div>)}
+              {project.timeline.timeSignatureChanges.map((change) => <div key={change.startBar} role="img" aria-label={`${change.startBar + 1}小節目から${change.beatsPerBar}/${change.beatUnit}`} className="pointer-events-none absolute inset-y-0 z-20 border-l-2 border-amber-300/80" style={{ left: change.startBar * barWidth }}><span className="absolute left-1 top-1 whitespace-nowrap rounded bg-amber-300/20 px-1 text-[10px] font-semibold text-amber-200">{change.beatsPerBar}/{change.beatUnit}</span></div>)}
             </div>
-            <MinuteBarTrack minuteBars={project.timeline.minuteBars} totalWidth={totalWidth} barWidth={barWidth} minuteWidth={minuteWidth} minutePreview={minutePreview} disabled={disabled} onStart={startMinutePointer} onMove={moveMinutePointer} onEnd={applyMinutePreview} onCancel={() => { setMinuteInteraction(null); setMinutePreview(null) }} onAdd={addMinuteBar} />
+            <MinuteBarTrack minuteBars={project.timeline.minuteBars} totalWidth={totalWidth} barWidth={barWidth} minuteGuideSpan={minuteGuideSpan} minutePreview={minutePreview} disabled={disabled} onStart={startMinutePointer} onMove={moveMinutePointer} onEnd={applyMinutePreview} onCancel={() => { setMinuteInteraction(null); setMinutePreview(null) }} onAdd={addMinuteBar} />
           </div>
           {project.lanes.map((lane) => <div key={lane.id} className="grid grid-cols-[220px_max-content]" style={{ width: 220 + totalWidth }}>
             <LaneHeader lane={lane} disabled={disabled} renameLaneId={renameLaneId} renameDraft={renameDraft} setRenameDraft={setRenameDraft} onStartRename={() => { setRenameLaneId(lane.id); setRenameDraft(lane.name) }} onFinishRename={() => finishRename(lane)} onCancelRename={() => setRenameLaneId(null)} onColorChange={(color) => commit({ type: 'lane/update', laneId: lane.id, name: lane.name, color })} onAddBlock={() => openNewBlock(lane.id)} onDelete={() => setLaneToDelete(lane)} />
@@ -405,7 +457,11 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
       </div>
       <div className="min-h-6 border-t bg-card px-4 py-1 text-sm" aria-live="polite">{error ? <span className="text-destructive">{error}</span> : notice ? <span className="text-primary">{notice}</span> : <span className="text-muted-foreground">小節ルーラー上のホイールで横幅を8px刻みで変更できます。空き場所をダブルクリックで1小節、クリックしてドラッグで任意の長さを追加。Shift＋ドラッグで範囲選択、Ctrl/Cmd＋クリックで複数選択。選択中はDelete / Backspaceで削除できます。</span>}</div>
     </section>
-    <Dialog open={form !== null} onOpenChange={(open) => { if (!open) setForm(null) }}><DialogContent><DialogHeader><DialogTitle>{form?.blockId ? 'ブロックを編集' : 'ブロックを追加'}</DialogTitle><DialogDescription>小節番号は1から始まります。重なるブロックは配置できません。</DialogDescription></DialogHeader>{form && <div className="mt-5 grid gap-4">
+      <Dialog open={timeSignatureDialogOpen} onOpenChange={(open) => { setTimeSignatureDialogOpen(open); if (!open) setEditingTimeSignatureStartBar(null) }}><DialogContent><DialogHeader><DialogTitle>拍子変更</DialogTitle><DialogDescription>指定した小節の先頭から拍子を変更します。1小節目の拍子は上部の「拍子」設定で変更できます。</DialogDescription></DialogHeader><div className="mt-4 grid gap-4">
+        <div className="grid grid-cols-3 gap-3"><div className="grid gap-2"><Label htmlFor="time-signature-start">開始小節</Label><Input id="time-signature-start" inputMode="numeric" value={timeSignatureForm.startBar} onChange={(event) => setTimeSignatureForm({ ...timeSignatureForm, startBar: event.target.value })} /></div><div className="grid gap-2"><Label htmlFor="time-signature-beats">分子</Label><Input id="time-signature-beats" inputMode="numeric" value={timeSignatureForm.beatsPerBar} onChange={(event) => setTimeSignatureForm({ ...timeSignatureForm, beatsPerBar: event.target.value })} /></div><div className="grid gap-2"><Label htmlFor="time-signature-unit">分母</Label><select id="time-signature-unit" className="h-9 rounded-md border bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring" value={timeSignatureForm.beatUnit} onChange={(event) => setTimeSignatureForm({ ...timeSignatureForm, beatUnit: event.target.value })}>{[2, 4, 8, 16].map((unit) => <option key={unit} value={unit}>{unit}</option>)}</select></div></div>
+        {project.timeline.timeSignatureChanges.length > 0 && <div className="grid gap-2"><p className="text-sm font-medium">登録済み</p><div className="grid gap-2">{project.timeline.timeSignatureChanges.map((change) => <div key={change.startBar} className="flex items-center justify-between rounded border border-border/70 bg-muted/20 px-3 py-2 text-sm"><span>{change.startBar + 1}小節目〜 <strong>{change.beatsPerBar}/{change.beatUnit}</strong></span><span className="flex gap-1"><Button type="button" size="icon-xs" variant="ghost" onClick={() => openTimeSignatureEditor(change)} aria-label={`${change.startBar + 1}小節目の拍子変更を編集`}><Pencil /></Button><Button type="button" size="icon-xs" variant="ghost" onClick={() => removeTimeSignatureChange(change.startBar)} aria-label={`${change.startBar + 1}小節目の拍子変更を削除`}><Trash2 /></Button></span></div>)}</div></div>}
+      </div><DialogFooter><Button variant="outline" onClick={() => setTimeSignatureDialogOpen(false)}>キャンセル</Button><Button onClick={saveTimeSignatureChange}>{editingTimeSignatureStartBar === null ? '追加' : '更新'}</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={form !== null} onOpenChange={(open) => { if (!open) setForm(null) }}><DialogContent><DialogHeader><DialogTitle>{form?.blockId ? 'ブロックを編集' : 'ブロックを追加'}</DialogTitle><DialogDescription>小節番号は1から始まります。重なるブロックは配置できません。</DialogDescription></DialogHeader>{form && <div className="mt-5 grid gap-4">
       <div className="grid gap-2"><Label htmlFor="block-label">ラベル</Label><Input id="block-label" value={form.label} maxLength={120} onChange={(event) => setForm({ ...form, label: event.target.value })} autoFocus /></div>
       <div className="grid gap-2"><Label htmlFor="block-memo">メモ</Label><Textarea id="block-memo" value={form.memo} maxLength={10000} onChange={(event) => setForm({ ...form, memo: event.target.value })} /></div>
       <fieldset className="grid gap-2"><legend className="text-sm font-medium">色</legend><div className="flex flex-wrap gap-2" role="radiogroup" aria-label="ブロックの色">{LANE_COLORS.map((color) => <button key={color} type="button" className={cn('flex h-9 min-w-20 items-center justify-center rounded-md border px-2 text-xs font-semibold transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring', COLOR_CLASSES[color], form.color === color && 'ring-2 ring-primary ring-offset-2 ring-offset-background')} aria-label={`ブロックの色を${COLOR_LABELS[color]}にする`} aria-pressed={form.color === color} onClick={() => setForm({ ...form, color })}>{form.color === color ? '✓ ' : ''}{COLOR_LABELS[color]}</button>)}</div></fieldset>
@@ -416,15 +472,16 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
   </TooltipProvider>
 }
 
-function MinuteBarTrack({ minuteBars, totalWidth, barWidth, minuteWidth, minutePreview, disabled, onStart, onMove, onEnd, onCancel, onAdd }: { minuteBars: number[]; totalWidth: number; barWidth: number; minuteWidth: number; minutePreview: { index: number; startBar: number } | null; disabled: boolean; onStart: (event: ReactPointerEvent<HTMLButtonElement>, index: number) => void; onMove: (event: ReactPointerEvent<HTMLElement>) => void; onEnd: () => void; onCancel: () => void; onAdd: () => void }) {
+function MinuteBarTrack({ minuteBars, totalWidth, barWidth, minuteGuideSpan, minutePreview, disabled, onStart, onMove, onEnd, onCancel, onAdd }: { minuteBars: number[]; totalWidth: number; barWidth: number; minuteGuideSpan: (startBar: number) => number; minutePreview: { index: number; startBar: number } | null; disabled: boolean; onStart: (event: ReactPointerEvent<HTMLButtonElement>, index: number) => void; onMove: (event: ReactPointerEvent<HTMLElement>) => void; onEnd: () => void; onCancel: () => void; onAdd: () => void }) {
   const lastStart = Math.max(...minuteBars, 0)
+  const lastMinuteWidth = minuteGuideSpan(lastStart) * barWidth
   return <div className="relative h-[38px] border-t border-border/60 bg-muted/20" style={{ width: totalWidth }} onPointerMove={onMove}>
     {minuteBars.map((startBar, index) => {
       const displayStart = minutePreview?.index === index ? minutePreview.startBar : startBar
-      const visibleWidth = Math.max(28, Math.min(minuteWidth, totalWidth - displayStart * barWidth))
+      const visibleWidth = Math.max(28, Math.min(minuteGuideSpan(displayStart) * barWidth, totalWidth - displayStart * barWidth))
       return <button key={`${startBar}-${index}`} type="button" className={cn('absolute inset-y-1 flex items-center justify-center rounded border border-primary/60 bg-primary/15 px-2 text-xs font-semibold text-primary shadow-sm transition hover:bg-primary/25 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring', disabled && 'cursor-not-allowed opacity-60')} style={{ left: displayStart * barWidth, width: visibleWidth, touchAction: 'none' }} onPointerDown={(event) => onStart(event, index)} onPointerMove={onMove} onPointerUp={onEnd} onPointerCancel={onCancel} onLostPointerCapture={onCancel} aria-label={`1分バー ${index + 1}、開始小節${displayStart + 1}、ドラッグで移動`}><span className="truncate">1分</span></button>
     })}
-    {minuteBars.length > 0 && <button type="button" className="absolute inset-y-0 z-10 w-6 -translate-x-1/2 cursor-pointer text-primary transition hover:bg-primary/15 focus-visible:ring-2 focus-visible:ring-ring" style={{ left: Math.min(totalWidth - 1, lastStart * barWidth + minuteWidth) }} onClick={onAdd} disabled={disabled} aria-label="右端に1分バーを追加">＋</button>}
+    {minuteBars.length > 0 && <button type="button" className="absolute inset-y-0 z-10 w-6 -translate-x-1/2 cursor-pointer text-primary transition hover:bg-primary/15 focus-visible:ring-2 focus-visible:ring-ring" style={{ left: Math.min(totalWidth - 1, lastStart * barWidth + lastMinuteWidth) }} onClick={onAdd} disabled={disabled} aria-label="右端に1分バーを追加">＋</button>}
     {minuteBars.length === 0 && <button type="button" className="absolute inset-0 text-left text-xs text-muted-foreground hover:text-primary" onClick={onAdd} disabled={disabled}>＋ 1分バーを追加</button>}
   </div>
 }

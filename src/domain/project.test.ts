@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import sample from '../../examples/arrangement-notes.v1.json'
-import { PROJECT_FORMAT, SCHEMA_VERSION } from './project'
+import { LEGACY_SCHEMA_VERSION, PROJECT_FORMAT } from './project'
 
 // Contract fixture checks; runtime validation and editing tests come next.
 describe('v1 handoff fixture', () => {
   it('identifies the documented format and contains unique entity IDs', () => {
     expect(sample.format).toBe(PROJECT_FORMAT)
-    expect(sample.schemaVersion).toBe(SCHEMA_VERSION)
+    expect(sample.schemaVersion).toBe(LEGACY_SCHEMA_VERSION)
     const laneIds = sample.lanes.map((lane) => lane.id)
     const blockIds = sample.lanes.flatMap((lane) => lane.blocks.map((block) => block.id))
     expect(new Set(laneIds).size).toBe(laneIds.length)

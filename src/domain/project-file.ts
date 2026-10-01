@@ -12,7 +12,11 @@ const sortedProject = (project: ArrangementProject): ArrangementProject => ({
     bpm: project.tempo.bpm,
     timeSignature: { ...project.tempo.timeSignature },
   },
-  timeline: { ...project.timeline },
+  timeline: {
+    ...project.timeline,
+    minuteBars: [...project.timeline.minuteBars],
+    timeSignatureChanges: [...project.timeline.timeSignatureChanges].sort((left, right) => left.startBar - right.startBar).map((change) => ({ ...change })),
+  },
   lanes: project.lanes.map((lane) => ({
     ...lane,
     blocks: [...lane.blocks]

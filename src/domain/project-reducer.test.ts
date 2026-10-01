@@ -142,7 +142,7 @@ describe('project reducer', () => {
     const changed = applyProjectMutation(original, { type: 'timeline/minute-bars', minuteBars: [2, 32], totalBars: 64 }, '2026-09-06T00:02:00.000Z')
     expect(changed.ok).toBe(true)
     if (!changed.ok) return
-    expect(changed.value.timeline).toEqual({ totalBars: 64, minuteBars: [2, 32] })
+    expect(changed.value.timeline).toEqual({ totalBars: 64, minuteBars: [2, 32], timeSignatureChanges: [] })
 
     const extended = applyProjectMutation(changed.value, { type: 'timeline/minute-bars', minuteBars: [2, 32, 62], totalBars: 92 }, '2026-09-06T00:03:00.000Z')
     expect(extended.ok).toBe(true)
@@ -163,6 +163,23 @@ describe('project reducer', () => {
     expect(recolored.ok).toBe(true)
     if (!recolored.ok) return
     expect(recolored.value.lanes[0].blocks[0].color).toBe('rose')
+  })
+
+  it('adds and removes mid-song time signature changes without moving blocks', () => {
+    const original = projectWithLane()
+    const withBlock = applyProjectMutation(original, { type: 'block/add', laneId, block: block(blockId, 4, 4) }, '2026-09-06T00:02:00.000Z')
+    if (!withBlock.ok) throw new Error(withBlock.error)
+    const changed = applyProjectMutation(withBlock.value, {
+      type: 'timeline/time-signature-changes',
+      changes: [{ startBar: 8, beatsPerBar: 3, beatUnit: 4 }],
+    }, '2026-09-06T00:03:00.000Z')
+    expect(changed.ok).toBe(true)
+    if (!changed.ok) return
+    expect(changed.value.timeline.timeSignatureChanges).toEqual([{ startBar: 8, beatsPerBar: 3, beatUnit: 4 }])
+    expect(changed.value.lanes[0].blocks[0]).toMatchObject({ startBar: 4, durationBars: 4 })
+    const removed = applyProjectMutation(changed.value, { type: 'timeline/time-signature-changes', changes: [] }, '2026-09-06T00:04:00.000Z')
+    expect(removed.ok).toBe(true)
+    if (removed.ok) expect(removed.value.timeline.timeSignatureChanges).toEqual([])
   })
 
   it('updates and removes multiple blocks in one mutation', () => {

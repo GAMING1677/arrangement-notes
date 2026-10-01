@@ -1,9 +1,20 @@
-/** File contract v1. Runtime validation is the first implementation task. */
+/** File contract v2. Runtime validation is the first implementation task. */
 export const PROJECT_FORMAT = 'arrangement-notes' as const
-export const SCHEMA_VERSION = 1 as const
+export const SCHEMA_VERSION = 2 as const
+export const LEGACY_SCHEMA_VERSION = 1 as const
 
 export type LaneColor = 'cyan' | 'violet' | 'amber' | 'emerald' | 'rose' | 'blue'
 export type BeatUnit = 2 | 4 | 8 | 16
+
+export interface TimeSignature {
+  beatsPerBar: number
+  beatUnit: BeatUnit
+}
+
+/** A change takes effect at this zero-based bar. Bar 0 uses tempo.timeSignature. */
+export interface TimeSignatureChange extends TimeSignature {
+  startBar: number
+}
 
 export interface IdeaBlock {
   id: string
@@ -30,8 +41,8 @@ export interface ArrangementProject {
   name: string
   createdAt: string
   updatedAt: string
-  tempo: { bpm: number; timeSignature: { beatsPerBar: number; beatUnit: BeatUnit } }
-  timeline: { totalBars: number; minuteBars: number[] }
+  tempo: { bpm: number; timeSignature: TimeSignature }
+  timeline: { totalBars: number; minuteBars: number[]; timeSignatureChanges: TimeSignatureChange[] }
   lanes: IdeaLane[]
 }
 

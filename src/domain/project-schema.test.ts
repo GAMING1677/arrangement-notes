@@ -13,7 +13,11 @@ describe('validateProject', () => {
   it('accepts the documented v1 project', () => {
     const result = validateProject(validProject())
     expect(result.ok).toBe(true)
-    if (result.ok) expect(result.value.lanes[0].blocks[0].color).toBe('cyan')
+    if (result.ok) {
+      expect(result.value.lanes[0].blocks[0].color).toBe('cyan')
+      expect(result.value.schemaVersion).toBe(2)
+      expect(result.value.timeline.timeSignatureChanges).toEqual([])
+    }
   })
 
   it('inherits a lane color for legacy blocks without an individual color', () => {
@@ -67,5 +71,22 @@ describe('validateProject', () => {
     const overlapProject = validProject()
     overlapProject.lanes[0].blocks[1].startBar = 7
     expect(validateProject(overlapProject).ok).toBe(false)
+  })
+
+  it('accepts ordered mid-song time signature changes and rejects invalid positions', () => {
+    const project = validProject()
+    project.timeline = { ...project.timeline, timeSignatureChanges: [
+      { startBar: 8, beatsPerBar: 3, beatUnit: 4 },
+      { startBar: 24, beatsPerBar: 7, beatUnit: 8 },
+    ] }
+    const valid = validateProject({ ...project, schemaVersion: 2 })
+    expect(valid.ok).toBe(true)
+
+    const invalid = validateProject({
+      ...project,
+      schemaVersion: 2,
+      timeline: { ...project.timeline, timeSignatureChanges: [{ startBar: 0, beatsPerBar: 3, beatUnit: 4 }] },
+    })
+    expect(invalid.ok).toBe(false)
   })
 })

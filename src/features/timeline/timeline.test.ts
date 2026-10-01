@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { adjustBarWidth, barFromClientX, blockStyle, canPlace, collides, MAX_BAR_WIDTH, MIN_BAR_WIDTH, moveBlock, overlaps, resizeBlock, snapDelta } from './timeline'
+import { adjustBarWidth, barFromClientX, barDurationSeconds, barsForDuration, blockStyle, canPlace, clampMinuteGuideStart, collides, MAX_BAR_WIDTH, MIN_BAR_WIDTH, minuteGuideDurationBars, moveBlock, overlaps, resizeBlock, snapDelta, timeSignatureAtBar } from './timeline'
 
 const block = (id: string, startBar: number, durationBars: number) => ({ id, label: id, memo: '', startBar, durationBars, color: 'cyan' as const })
 
@@ -45,5 +45,27 @@ describe('adjustBarWidth', () => {
   it('clamps the width to the supported range', () => {
     expect(adjustBarWidth(MAX_BAR_WIDTH, 1)).toBe(MAX_BAR_WIDTH)
     expect(adjustBarWidth(MIN_BAR_WIDTH, -1)).toBe(MIN_BAR_WIDTH)
+  })
+})
+
+describe('time signature geometry', () => {
+  it('uses the most recent change for a bar', () => {
+    const initial = { beatsPerBar: 4, beatUnit: 4 as const }
+    const changes = [{ startBar: 8, beatsPerBar: 3, beatUnit: 4 as const }]
+    expect(timeSignatureAtBar(initial, changes, 7)).toEqual(initial)
+    expect(timeSignatureAtBar(initial, changes, 8)).toEqual(changes[0])
+    expect(barDurationSeconds(120, changes[0])).toBe(1.5)
+  })
+
+  it('counts variable-length bars for a minute guide', () => {
+    expect(barsForDuration(0, 60, 64, 120, { beatsPerBar: 4, beatUnit: 4 }, [])).toBe(30)
+    expect(barsForDuration(0, 60, 64, 120, { beatsPerBar: 4, beatUnit: 4 }, [{ startBar: 8, beatsPerBar: 3, beatUnit: 4 }])).toBe(38)
+  })
+
+  it('starts each minute guide using the signature at its position', () => {
+    const changes = [{ startBar: 8, beatsPerBar: 3, beatUnit: 4 as const }]
+    expect(minuteGuideDurationBars(0, 64, 120, { beatsPerBar: 4, beatUnit: 4 }, changes)).toBe(38)
+    expect(minuteGuideDurationBars(38, 64, 120, { beatsPerBar: 4, beatUnit: 4 }, changes)).toBe(40)
+    expect(clampMinuteGuideStart(50, 64, 120, { beatsPerBar: 4, beatUnit: 4 }, changes)).toBe(24)
   })
 })

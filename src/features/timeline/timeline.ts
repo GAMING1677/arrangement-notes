@@ -1,4 +1,4 @@
-import type { IdeaBlock } from '@/domain/project'
+import type { IdeaBlock, TimeSignature, TimeSignatureChange } from '@/domain/project'
 
 export const MIN_BAR_WIDTH = 24
 export const MAX_BAR_WIDTH = 96
@@ -6,6 +6,63 @@ export const BAR_WIDTH_STEP = 8
 
 export function barsPerMinute(bpm: number, beatsPerBar: number, beatUnit: number): number {
   return bpm / (beatsPerBar * (4 / beatUnit))
+}
+
+export function timeSignatureAtBar(initial: TimeSignature, changes: readonly TimeSignatureChange[], bar: number): TimeSignature {
+  let current = initial
+  for (const change of changes) {
+    if (change.startBar > bar) break
+    current = change
+  }
+  return current
+}
+
+export function barDurationSeconds(bpm: number, signature: TimeSignature): number {
+  return (60 / bpm) * signature.beatsPerBar * (4 / signature.beatUnit)
+}
+
+export function barsForDuration(
+  startBar: number,
+  seconds: number,
+  totalBars: number,
+  bpm: number,
+  initial: TimeSignature,
+  changes: readonly TimeSignatureChange[],
+): number {
+  if (seconds <= 0 || startBar >= totalBars) return 0
+  let elapsed = 0
+  let bars = 0
+  while (startBar + bars < totalBars && elapsed < seconds) {
+    elapsed += barDurationSeconds(bpm, timeSignatureAtBar(initial, changes, startBar + bars))
+    bars += 1
+  }
+  return bars
+}
+
+export function minuteGuideDurationBars(
+  startBar: number,
+  totalBars: number,
+  bpm: number,
+  initial: TimeSignature,
+  changes: readonly TimeSignatureChange[],
+): number {
+  const shortestBarSeconds = barDurationSeconds(bpm, { beatsPerBar: 1, beatUnit: 16 })
+  const horizonBars = Math.max(totalBars, startBar + Math.ceil(60 / shortestBarSeconds) + 1)
+  return Math.max(1, barsForDuration(startBar, 60, horizonBars, bpm, initial, changes))
+}
+
+export function clampMinuteGuideStart(
+  startBar: number,
+  totalBars: number,
+  bpm: number,
+  initial: TimeSignature,
+  changes: readonly TimeSignatureChange[],
+): number {
+  let candidate = clampBar(startBar, 0, Math.max(0, totalBars - 1))
+  while (candidate > 0 && candidate + minuteGuideDurationBars(candidate, totalBars, bpm, initial, changes) > totalBars) {
+    candidate -= 1
+  }
+  return candidate
 }
 
 export function adjustBarWidth(barWidth: number, direction: -1 | 1): number {

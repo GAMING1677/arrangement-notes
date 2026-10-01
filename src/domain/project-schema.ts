@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { ArrangementProject, IdeaBlock, IdeaLane, LaneColor } from './project'
-import { PROJECT_FORMAT, SCHEMA_VERSION } from './project'
+import { LEGACY_SCHEMA_VERSION, PROJECT_FORMAT, SCHEMA_VERSION } from './project'
 import type { Result } from './editor-contracts'
 
 export const MAX_LANES = 100
@@ -50,6 +50,15 @@ const blockLabel = z.string().refine(
 
 const laneColor = z.enum(['cyan', 'violet', 'amber', 'emerald', 'rose', 'blue'])
 const beatUnit = z.union([z.literal(2), z.literal(4), z.literal(8), z.literal(16)])
+const timeSignatureSchema = z.object({
+  beatsPerBar: z.number().int('拍子の分子は整数で指定してください').min(1).max(16),
+  beatUnit,
+}).strict()
+const timeSignatureChangeSchema = z.object({
+  startBar: z.number().int('拍子変更の開始小節は整数で指定してください').nonnegative('拍子変更の開始小節は0以上で指定してください'),
+  beatsPerBar: z.number().int('拍子の分子は整数で指定してください').min(1).max(16),
+  beatUnit,
+}).strict()
 
 const blockSchema = z
   .object({
@@ -72,43 +81,46 @@ const laneSchema = z
   })
   .strict()
 
-const projectShapeSchema = z
-  .object({
-    format: z.literal(PROJECT_FORMAT),
-    schemaVersion: z.literal(SCHEMA_VERSION),
-    id: uuid,
-    name: projectName,
-    createdAt: utcIsoDate,
-    updatedAt: utcIsoDate,
-    tempo: z
-      .object({
-        bpm: z
-          .number()
-          .finite('BPMは有限数で指定してください')
-          .min(20, 'BPMは20以上で指定してください')
-          .max(400, 'BPMは400以下で指定してください')
-          .refine((value) => Number.isInteger(value * 10), 'BPMは小数第1位までで指定してください'),
-        timeSignature: z
-          .object({
-            beatsPerBar: z.number().int('拍子の分子は整数で指定してください').min(1).max(16),
-            beatUnit,
-          })
-          .strict(),
-      })
-      .strict(),
-    timeline: z
-      .object({
-        totalBars: z
-          .number()
-          .int('総小節数は整数で指定してください')
-          .min(1, '総小節数は1以上で指定してください')
-          .max(MAX_TOTAL_BARS, `総小節数は${MAX_TOTAL_BARS}以下で指定してください`),
-        minuteBars: z.array(z.number().int().nonnegative()).max(MAX_TOTAL_BARS, '1分バーが多すぎます').default([0]),
-      })
-      .strict(),
-    lanes: z.array(laneSchema).max(MAX_LANES, `レーンは${MAX_LANES}件以内で指定してください`),
-  })
-  .strict()
+const bpmSchema = z
+  .number()
+  .finite('BPMは有限数で指定してください')
+  .min(20, 'BPMは20以上で指定してください')
+  .max(400, 'BPMは400以下で指定してください')
+  .refine((value) => Number.isInteger(value * 10), 'BPMは小数第1位までで指定してください')
+
+const projectFields = {
+  format: z.literal(PROJECT_FORMAT),
+  id: uuid,
+  name: projectName,
+  createdAt: utcIsoDate,
+  updatedAt: utcIsoDate,
+  tempo: z.object({ bpm: bpmSchema, timeSignature: timeSignatureSchema }).strict(),
+  lanes: z.array(laneSchema).max(MAX_LANES, `レーンは${MAX_LANES}件以内で指定してください`),
+}
+
+const timelineFields = {
+  totalBars: z
+    .number()
+    .int('総小節数は整数で指定してください')
+    .min(1, '総小節数は1以上で指定してください')
+    .max(MAX_TOTAL_BARS, `総小節数は${MAX_TOTAL_BARS}以下で指定してください`),
+  minuteBars: z.array(z.number().int().nonnegative()).max(MAX_TOTAL_BARS, '1分バーが多すぎます').default([0]),
+}
+
+const projectShapeSchema = z.object({
+  ...projectFields,
+  schemaVersion: z.literal(SCHEMA_VERSION),
+  timeline: z.object({
+    ...timelineFields,
+    timeSignatureChanges: z.array(timeSignatureChangeSchema).max(MAX_TOTAL_BARS, '拍子変更が多すぎます').default([]),
+  }).strict(),
+}).strict()
+
+const legacyProjectShapeSchema = z.object({
+  ...projectFields,
+  schemaVersion: z.literal(LEGACY_SCHEMA_VERSION),
+  timeline: z.object(timelineFields).strict(),
+}).strict()
 
 const issueMessage = (path: PropertyKey[], message: string) => {
   const location = path.length > 0 ? ` (${path.map(String).join('.')})` : ''
@@ -130,6 +142,16 @@ const semanticError = (project: ArrangementProject): string | undefined => {
   }
   if (new Set(minuteBarStarts).size !== minuteBarStarts.length) {
     return '1分バーの位置が重複しています'
+  }
+
+  const timeSignatureChanges = project.timeline.timeSignatureChanges
+  if (timeSignatureChanges.some((change) => change.startBar <= 0 || change.startBar >= project.timeline.totalBars)) {
+    return '拍子変更の開始位置は2小節目以降、曲末より前にしてください'
+  }
+  for (let index = 1; index < timeSignatureChanges.length; index += 1) {
+    if (timeSignatureChanges[index - 1].startBar >= timeSignatureChanges[index].startBar) {
+      return '拍子変更の開始小節が重複または順不同です'
+    }
   }
 
   const laneIds = new Set<string>()
@@ -174,14 +196,28 @@ const semanticError = (project: ArrangementProject): string | undefined => {
 
 export const validateProject = (value: unknown): Result<ArrangementProject> => {
   const parsed = projectShapeSchema.safeParse(value)
-  if (!parsed.success) {
+  const legacyParsed = parsed.success ? null : legacyProjectShapeSchema.safeParse(value)
+  const legacyData = legacyParsed?.success ? legacyParsed.data : null
+  if (!parsed.success && !legacyData) {
     const issue = parsed.error.issues[0]
     return fail(issueMessage(issue.path, issue.message))
   }
 
+  const source = parsed.success
+    ? parsed.data
+    : {
+        ...legacyData!,
+        schemaVersion: SCHEMA_VERSION,
+        timeline: { ...legacyData!.timeline, timeSignatureChanges: [] },
+      }
+
   const project = {
-    ...parsed.data,
-    lanes: parsed.data.lanes.map((lane) => ({
+    ...source,
+    timeline: {
+      ...source.timeline,
+      timeSignatureChanges: [...(source.timeline.timeSignatureChanges ?? [])].sort((left, right) => left.startBar - right.startBar),
+    },
+    lanes: (source.lanes ?? []).map((lane) => ({
       ...lane,
       blocks: lane.blocks.map((block): IdeaBlock => ({
         id: block.id,

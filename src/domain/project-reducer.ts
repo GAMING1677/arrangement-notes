@@ -18,7 +18,11 @@ const cloneProject = (project: ArrangementProject): ArrangementProject => ({
     bpm: project.tempo.bpm,
     timeSignature: { ...project.tempo.timeSignature },
   },
-  timeline: { ...project.timeline },
+  timeline: {
+    ...project.timeline,
+    minuteBars: [...project.timeline.minuteBars],
+    timeSignatureChanges: project.timeline.timeSignatureChanges.map((change) => ({ ...change })),
+  },
   lanes: project.lanes.map(cloneLane),
 })
 
@@ -49,7 +53,7 @@ export const createProject = (id: string, now: string): ArrangementProject => {
         beatUnit: DEFAULT_PROJECT_SETTINGS.beatUnit,
       },
     },
-    timeline: { totalBars: DEFAULT_PROJECT_SETTINGS.totalBars, minuteBars: [0] },
+    timeline: { totalBars: DEFAULT_PROJECT_SETTINGS.totalBars, minuteBars: [0], timeSignatureChanges: [] },
     lanes: [],
   }
   const validated = validateProject(project)
@@ -78,10 +82,21 @@ export const applyProjectMutation = (
         bpm: mutation.tempo.bpm,
         timeSignature: { ...mutation.tempo.timeSignature },
       }
-      next.timeline = { totalBars: mutation.totalBars, minuteBars: [...next.timeline.minuteBars] }
+      next.timeline = {
+        totalBars: mutation.totalBars,
+        minuteBars: [...next.timeline.minuteBars],
+        timeSignatureChanges: [...next.timeline.timeSignatureChanges],
+      }
       break
     case 'timeline/minute-bars':
-      next.timeline = { totalBars: mutation.totalBars, minuteBars: [...mutation.minuteBars] }
+      next.timeline = {
+        totalBars: mutation.totalBars,
+        minuteBars: [...mutation.minuteBars],
+        timeSignatureChanges: [...next.timeline.timeSignatureChanges],
+      }
+      break
+    case 'timeline/time-signature-changes':
+      next.timeline.timeSignatureChanges = mutation.changes.map((change) => ({ ...change }))
       break
     case 'lane/add':
       next.lanes.push(cloneLane(mutation.lane))
