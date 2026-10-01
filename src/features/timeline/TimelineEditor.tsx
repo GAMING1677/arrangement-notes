@@ -80,6 +80,7 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
   const [minuteInteraction, setMinuteInteraction] = useState<MinuteInteraction | null>(null)
   const [minutePreview, setMinutePreview] = useState<{ index: number; startBar: number } | null>(null)
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null)
 
   const totalWidth = project.timeline.totalBars * barWidth
   const minuteSpan = Math.max(1, barsPerMinute(project.tempo.bpm, project.tempo.timeSignature.beatsPerBar, project.tempo.timeSignature.beatUnit))
@@ -252,6 +253,8 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
       setSelectionAnchorId(block.id)
     }
     const target = event.currentTarget
+    // preventDefault suppresses native focus, so keep keyboard editing on the block.
+    target.closest<HTMLButtonElement>('button')?.focus({ preventScroll: true })
     target.setPointerCapture(event.pointerId)
     const initialBlocks = mode === 'move'
       ? allBlocks.filter(({ block: candidate }) => currentSelection.includes(candidate.id))
@@ -293,6 +296,7 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
     if (disabled || event.target !== event.currentTarget) return
     const row = rowRefs.current[lane.id]
     if (!row) return
+    scrollAreaRef.current?.focus({ preventScroll: true })
     event.currentTarget.setPointerCapture(event.pointerId)
     const startBar = barFromClientX(event.clientX, row.getBoundingClientRect().left, barWidth, project.timeline.totalBars)
     if (event.shiftKey) {
@@ -372,7 +376,7 @@ export function TimelineEditor({ project, onMutation, disabled = false }: Timeli
         <span className="w-10 text-center text-xs tabular-nums">{barWidth}px</span>
         <Button size="icon-xs" variant="outline" onClick={() => setBarWidth((value) => adjustBarWidth(value, 1))} disabled={disabled || barWidth === MAX_BAR_WIDTH} aria-label="表示倍率を上げる">＋</Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto" tabIndex={0} onKeyDown={(event) => {
+      <div ref={scrollAreaRef} className="min-h-0 flex-1 overflow-auto" tabIndex={0} onKeyDown={(event) => {
         if (event.key === 'Escape') {
           setInteraction(null); setPreview(null); setCreateInteraction(null); setCreatePreview(null); setSelectionInteraction(null)
         }
